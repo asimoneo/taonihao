@@ -2,7 +2,7 @@
 // @name         Taobao / Tmall — умный поиск (RU/EN→中文) + цены ¥ → ₽
 // @namespace    https://tampermonkey.net/
 // @license      MIT
-// @version      2.4.0
+// @version      2.9.3
 // @description  Цены ¥→₽ в реальном времени (курс: Rapira USDT/RUB ÷ USDT/CNY из P2P/форекса), собственный перевод страницы через Google (вкл/выкл, работает при догрузке), перевод поисковых запросов RU/EN→中文, перевод текста прямо на картинках (PaddleOCR/Tesseract в браузере без ключей или Google Cloud Vision).
 // @match        *://*.taobao.com/*
 // @match        *://*.tmall.com/*
@@ -24,6 +24,8 @@
 // @connect      cdn.jsdelivr.net
 // @connect      fastly.jsdelivr.net
 // @connect      unpkg.com
+// @downloadURL https://update.greasyfork.org/scripts/599269/Taobao%20%20Tmall%20%E2%80%94%20%D1%83%D0%BC%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D0%B8%D1%81%D0%BA%20%28RUEN%E2%86%92%E4%B8%AD%E6%96%87%29%20%2B%20%D1%86%D0%B5%D0%BD%D1%8B%20%C2%A5%20%E2%86%92%20%E2%82%BD.user.js
+// @updateURL https://update.greasyfork.org/scripts/599269/Taobao%20%20Tmall%20%E2%80%94%20%D1%83%D0%BC%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D0%B8%D1%81%D0%BA%20%28RUEN%E2%86%92%E4%B8%AD%E6%96%87%29%20%2B%20%D1%86%D0%B5%D0%BD%D1%8B%20%C2%A5%20%E2%86%92%20%E2%82%BD.meta.js
 // ==/UserScript==
  
 (function () {
@@ -161,6 +163,19 @@
     return { prefix: '', lo, hi };
   }
  
+  // Подписи перед ценой внутри того же узла («约省¥3», «券后¥79»): в режиме «Замена» показываем по-русски
+  const PREFIX_RU = { '约省': 'экономия ≈', '省': 'экономия', '共省': 'экономия', '已省': 'экономия', '立省': 'экономия',
+    '券后': 'с купоном', '到手价': 'итого', '到手': 'итого', '低至': 'от', '约': '≈', '直降': 'скидка', '优惠': 'скидка',
+    '补贴': 'субсидия', '已补': 'субсидия', '原价': 'было', '折后': 'со скидкой', '预估到手': '≈ итого', '首单价': 'первый заказ' };
+  function ruPrefix(p) {
+    const t = String(p || '').replace(/[:：]\s*$/, '').trim();
+    if (!t) return '';
+    if (!CJK_RE.test(t)) return t;
+    if (Object.prototype.hasOwnProperty.call(PREFIX_RU, t)) return PREFIX_RU[t];
+    const l = typeof localTranslate === 'function' ? localTranslate(t) : null;
+    return l !== null ? l : '';
+  }
+
   function formatRub(cny, rate) {
     const v = cny * rate;
     return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: v < 100 ? 1 : 0 }).format(v);
@@ -237,14 +252,14 @@
   // Можно дополнять своими строками: 'китайский текст': 'перевод'.
   const UI_DICT = {
     // шапка, меню пользователя
-    '淘宝网首页': 'Главная Taobao', '淘宝首页': 'Главная Taobao', '我的淘宝': 'Мой Taobao', '已买到的宝贝': 'Мои покупки',
+    '淘宝网首页': 'Главная Taobao', '淘宝首页': 'Главная Taobao', '我的淘宝': 'Мой Taobao', '已买到的宝贝': 'Покупки',
     '已买到': 'Мои покупки', '我的足迹': 'История просмотров', '足迹': 'История просмотров', '我的卡券包': 'Мои купоны',
     '收藏的宝贝': 'Избранные товары', '收藏的店铺': 'Избранные магазины', '已卖出的宝贝': 'Проданные товары',
     '出售中的宝贝': 'Товары в продаже', '收藏夹': 'Избранное', '购物车': 'Корзина', '帮助中心': 'Справка',
     '意见反馈': 'Обратная связь', '反馈': 'Отзыв о сайте', '账号管理': 'Управление аккаунтом', '退出': 'Выйти',
-    '查看你的专属权益': 'Ваши привилегии', '网页无障碍': 'Доступность', '中文(zh)': 'Китайский (zh)', '英文(en)': 'Английский (en)',
+    '查看你的专属权益': 'Ваши привилегии', '网页无障碍': 'Доступность', '切换企业版': 'Для бизнеса', '切换': '', '企业版': 'Для бизнеса', '中文(zh)': 'Китайский (zh)', '英文(en)': 'Английский (en)',
     '中国大陆': 'Материковый Китай', '免费开店': 'Открыть магазин', '淘宝开店': 'Магазин на Taobao', '天猫开店': 'Магазин на Tmall',
-    '开直播店': 'Стрим-магазин', '千牛卖家中心': 'Центр продавца Qianniu', '商家中心': 'Центр продавца', '开店入驻': 'Стать продавцом',
+    '开直播店': 'Стрим-магазин', '千牛卖家中心': 'Qianniu', '商家中心': 'Центр продавца', '开店入驻': 'Стать продавцом',
     '卖家服务市场': 'Сервисы для продавцов', '卖家培训中心': 'Обучение продавцов', '体检中心': 'Проверка магазина',
     '电商学习中心': 'Обучение e-commerce', '商家客服': 'Поддержка продавцов', '消息中心': 'Сообщения', '举报中心': 'Жалобы',
     '淘宝规则': 'Правила Taobao', '天猫规则': 'Правила Tmall', '规则众议': 'Обсуждение правил', '商家支持': 'Поддержка продавцов',
@@ -258,7 +273,7 @@
     '按图片搜索': 'Поиск по фото', '上传图片': 'Загрузить фото', 'Ctrl+V 粘贴图片到此处': 'Ctrl+V — вставьте картинку сюда',
     'Ctrl+V 粘贴图片快速图搜': 'Ctrl+V — быстрый поиск по картинке', '搜同款': 'Найти такой же', '所有宝贝': 'Все товары',
     '企业购': 'Для бизнеса', '发货地': 'Откуда отправка', '综合': 'По релевантности', '销量': 'По продажам', '价格': 'Цена',
-    '区间': 'Диапазон', '包邮': 'Бесплатная доставка', '退货宝': 'Страховка возврата', '淘金币抵钱': 'Оплата монетами Taobao',
+    '区间': 'Диапазон', '¥最低价': '¥ от', '¥最高价': '¥ до', '最低价': 'от', '最高价': 'до', '包邮': 'Бесплатная доставка', '退货宝': 'Страховка возврата', '淘金币抵钱': 'Оплата монетами Taobao',
     '筛选': 'Фильтры', '上一页': 'Назад', '下一页': 'Вперёд', '到第': 'Перейти на', '页': 'стр.', '确定': 'OK',
     '大家都在搜': 'Часто ищут',
     // метки в карточках
@@ -266,13 +281,13 @@
     '降价提醒': 'Сообщить о снижении цены', '不喜欢该商品': 'Не нравится товар', '您加购的商品降价了': 'Товар из корзины подешевел',
     '失效': 'Недействительно', '热销爆款': 'Хит продаж', '官方客服': 'Официальная поддержка', '品牌入口': 'Бренды',
     '天猫榜单': 'Рейтинги Tmall', '热卖频道': 'Хиты продаж', '超级88': 'Super 88', '国家补贴': 'Госсубсидия',
-    '百亿补贴 · 买贵必赔': 'Субсидии · вернём разницу, если найдёте дешевле', '淘宝秒杀': 'Молниеносные скидки',
+    '百亿补贴 · 买贵必赔': 'Субсидии · вернём разницу', '淘宝秒杀': 'Флеш-скидки', '领券中心': 'Купоны',
     '大牌试用': 'Пробники брендов', '猜你喜欢': 'Вам может понравиться', '更多低价商品': 'Ещё недорогие товары', '刷新': 'Обновить',
     '关注店铺': 'Подписаться на магазин', '热销推荐': 'Хиты продаж', '好评推荐': 'С лучшими отзывами', '近期热卖': 'Сейчас популярно',
     // блок пользователя на главной
     '登录淘宝后更多精彩': 'Войдите в Taobao, чтобы увидеть больше', '立即登录': 'Войти', '收货地址': 'Адреса доставки',
     '待付款': 'Ожидают оплаты', '待发货': 'Ожидают отправки', '待收货': 'В пути', '待评价': 'Ждут отзыва', '红包': 'Бонусы',
-    '优惠券': 'Купоны', '张': 'шт.', '淘金币抵': 'Монеты Taobao', '买过的店': 'Мои магазины', '消息': 'Сообщения', '逛一逛': 'Обзор',
+    '优惠券': 'Купоны', '张': 'шт.', '猜你想搜': 'Вам может быть интересно', '换一换': 'Обновить', '历史搜索': 'История поиска', '清空': 'Очистить', '热搜': 'Популярное', '结算': 'Оформить', '领券结算': 'К оплате', '移入收藏': 'В избранное', '搜淘宝': 'Найти', '平台加补后': 'С субсидией', '店铺优惠后': 'Со скидкой', '含礼金共减': 'Всего скидка', '共减': 'Скидка', '优惠明细': 'Детали скидки', '取消选择': 'Снять выбор', '商品总价': 'Сумма товаров', '店铺优惠': 'Скидка магазина', '平台优惠': 'Скидка платформы', '小计': 'Итого', '合计': 'Итого', '合计:': 'Итого:', '合计：': 'Итого:', '全选': 'Выбрать все', '删除': 'Удалить', '失效宝贝': 'Недоступные товары', '清空失效宝贝': 'Очистить недоступные', '重新选择规格': 'Выбрать вариант', '款式缺货': 'Нет в наличии', '降价': 'Подешевело', '起': 'и выше', '图集': 'Фото сеткой', '用户评价': 'Отзывы', '查看全部评价': 'Все отзывы', '追评': 'Дополнения к отзывам', '淘金币抵': 'Монеты Taobao', '买过的店': 'Мои магазины', '消息': 'Сообщения', '逛一逛': 'Обзор',
     // карточка товара
     '客服': 'Поддержка', '进店': 'В магазин', '视频': 'Видео', '图集': 'Фото', '参数': 'Характеристики', '用户评价': 'Отзывы',
     '参数信息': 'Характеристики', '图文详情': 'Описание', '本店推荐': 'Рекомендации магазина', '看了又看': 'С этим смотрят',
@@ -293,6 +308,23 @@
     '颜色': 'Цвет', '重量': 'Вес', '长度': 'Длина', '宽度': 'Ширина', '高度': 'Высота'
   };
  
+  // Типовые фразы инфографики на фото товара (машинный перевод без контекста ошибается: 外弯 → «развал», 贴心 → «интимный»)
+  Object.assign(UI_DICT, {
+    '质量保证': 'Гарантия качества', '品质保证': 'Гарантия качества', '厂家直供': 'Напрямую с завода', '工厂直供': 'Напрямую с завода',
+    '源头厂家': 'Производитель', '实力厂家': 'Производитель', '厂家直销': 'Напрямую от производителя', '价格实惠': 'Выгодная цена',
+    '性价比高': 'Выгодная цена', '贴心售后': 'Заботливый сервис', '售后无忧': 'Сервис без забот', '无忧售后': 'Сервис без забот',
+    '损坏包赔': 'Замена при повреждении', '破损包赔': 'Замена при повреждении', '极速发货': 'Быстрая отправка', '闪电发货': 'Быстрая отправка',
+    '质保三年': 'Гарантия 3 года', '三年质保': 'Гарантия 3 года', '质保两年': 'Гарантия 2 года', '两年质保': 'Гарантия 2 года',
+    '质保一年': 'Гарантия 1 год', '一年质保': 'Гарантия 1 год', '以换代修': 'Замена вместо ремонта', '为什么选择我们': 'Почему мы?',
+    '为什么选择我们?': 'Почему мы?', '为什么选择我们？': 'Почему мы?', '购买须知': 'Перед покупкой', '温馨提示': 'Обратите внимание',
+    '产品参数': 'Характеристики', '产品详情': 'Описание товара', '安装示意图': 'Схема монтажа', '安装方法': 'Способ монтажа',
+    '内弯效果': 'Изгиб внутрь', '外弯效果': 'Изгиб наружу', '效果图': 'Пример', '实拍图': 'Реальное фото', '细节展示': 'Детали',
+    '长寿命': 'Долгий срок службы', '高光效': 'Высокая светоотдача', '色彩丰富': 'Насыщенные цвета', '低消耗': 'Низкое потребление',
+    '低功耗': 'Низкое потребление', '低光衰': 'Медленная деградация', '无频闪': 'Без мерцания', '不伤眼': 'Безопасно для глаз',
+    '防水': 'Водостойкий', '耐高温': 'Термостойкий', '可定制': 'Под заказ', '支持定制': 'Под заказ', '量大从优': 'Скидки на опт',
+    '现货速发': 'В наличии, быстрая отправка', '包邮': 'Бесплатная доставка', '正品保障': 'Гарантия оригинала'
+  });
+
   // Типовые строки с числами: «1000+人付款», «满11减8», «8年老店» …
   function cnNum(s) {
     return String(s).replace(/([\d.]+)([万千])/g, (_, n, u) =>
@@ -312,20 +344,20 @@
     [new RegExp('^已售\\s*' + N + '$'), (m) => 'Продано ' + cnNum(m[1])],
     [new RegExp('^月销\\s*' + N + '$'), (m) => 'Продано за месяц ' + cnNum(m[1])],
     [/^(\d+)年老店$/, (m) => 'Магазину ' + m[1] + ' ' + plural(+m[1], 'год', 'года', 'лет')],
-    [/^直降([\d.]+)元$/, (m) => 'Скидка ' + m[1] + ' ¥'],
-    [/^已降([\d.]+)元$/, (m) => 'Подешевел на ' + m[1] + ' ¥'],
-    [/^已补([\d.]+)元$/, (m) => 'Субсидия ' + m[1] + ' ¥'],
+    [/^直降([\d.]+)元$/, (m) => 'Скидка ¥' + m[1]],
+    [/^已降([\d.]+)元$/, (m) => 'Подешевел на ¥' + m[1]],
+    [/^已补([\d.]+)元$/, (m) => 'Субсидия ¥' + m[1]],
     [/^官方立减([\d.]+)%省([\d.]+)元$/, (m) => 'Скидка платформы ' + m[1] + '% (−' + m[2] + ' ¥)'],
     [/^官方立减([\d.]+)%$/, (m) => 'Скидка платформы ' + m[1] + '%'],
-    [/^官方立减([\d.]+)元$/, (m) => 'Скидка платформы ' + m[1] + ' ¥'],
+    [/^官方立减([\d.]+)元$/, (m) => 'Скидка платформы ¥' + m[1]],
     [/^超级立减([\d.]+)%$/, (m) => 'Суперскидка ' + m[1] + '%'],
-    [/^超级立减([\d.]+)元$/, (m) => 'Суперскидка ' + m[1] + ' ¥'],
+    [/^超级立减([\d.]+)元$/, (m) => 'Суперскидка ¥' + m[1]],
     [/^券满([\d.]+)减([\d.]+)$/, (m) => 'Купон: −' + m[2] + ' ¥ от ' + m[1] + ' ¥'],
     [/^满([\d.]+)减([\d.]+)$/, (m) => '−' + m[2] + ' ¥ от ' + m[1] + ' ¥'],
     [/^满([\d.]+)元?打([\d.]+)折$/, (m) => 'Скидка ' + Math.round(100 - parseFloat(m[2]) * 10) + '% от ' + m[1] + ' ¥'],
-    [/^淘金币(?:可)?抵([\d.]+)元起?$/, (m) => 'Монетами Taobao −' + m[1] + ' ¥'],
+    [/^淘金币(?:可)?抵([\d.]+)元起?$/, (m) => 'Монетами Taobao −¥' + m[1]],
     [/^政府补贴([\d.]+%)$/, (m) => 'Госсубсидия ' + m[1]],
-    [/^店铺新客减([\d.]+)元$/, (m) => 'Новым покупателям магазина −' + m[1] + ' ¥'],
+    [/^店铺新客减([\d.]+)元$/, (m) => 'Новым покупателям −¥' + m[1]],
     [/^(\d+)小时内发(?:货)?$/, (m) => 'Отправка в течение ' + m[1] + ' ч'],
     [/^(\d+)天内发(?:货)?$/, (m) => 'Отправка в течение ' + m[1] + ' ' + plural(+m[1], 'дня', 'дней', 'дней')],
     [/^回头客(\d+)人$/, (m) => 'Постоянных покупателей: ' + m[1]],
@@ -346,6 +378,11 @@
   // Сленг Taobao, который сбивает машинный перевод: заменяем на нейтральные слова перед отправкой в Google
   const SLANG = [['宝贝', '商品'], ['亲们', '顾客们'], ['亲', '您'], ['掌柜', '店主'], ['旺旺', '客服聊天'], ['淘金币', '淘宝金币'],
     ['包邮', '免运费'], ['拍下', '下单'], ['秒杀', '限时抢购']];
+  // Типовые огрехи машинного перевода в подписях вариантов (颜色分类：…, 发光颜色：…)
+  const RU_FIX = [[/^Классификация цвет(?:ов|а)\s*:?/i, 'Вариант:'], [/^Цветовая классификация\s*:?/i, 'Вариант:'],
+    [/^Светящийся цвет\s*:?/i, 'Цвет свечения:'], [/^Цвет свечения\s*:?/i, 'Цвет свечения:']];
+  function fixRu(t) { let s = String(t); for (const [re, to] of RU_FIX) s = s.replace(re, to); return s; }
+
   function prepForGoogle(core) {
     let s = core;
     for (const [a, b] of SLANG) if (s.includes(a)) s = s.split(a).join(b);
@@ -605,7 +642,12 @@
     searchTr: store.get('searchTr', true) !== false,    // перевод поисковых запросов
     imgTr: store.get('imgTr', true) !== false,          // кнопки перевода картинок
     ocrEngine: ['auto', 'paddle', 'tesseract', 'vision'].includes(store.get('ocrEngine', 'auto')) ? store.get('ocrEngine', 'auto') : 'auto',
-    imgAuto: store.get('imgAuto', false) === true,      // автоперевод фото на странице товара
+    imgAuto: store.get('imgAuto', true) !== false,      // автоперевод фото на странице товара (по умолчанию включён)
+    imgThumbs: store.get('imgThumbs', true) !== false,  // перевод фото в карточках товаров (поиск, лента, «С этим смотрят»)
+    sameTab: store.get('sameTab', true) !== false,      // товары и главная — в этой же вкладке (Ctrl/колёсико — как обычно, в новой)
+    revWhole: store.get('revWhole', true) !== false,    // отзыв переводится целиком, а не кусками
+    revAlbum: store.get('revAlbum', true) !== false,    // «Все отзывы» открываются сеткой фото
+    showWeight: store.get('showWeight', true) !== false, // вес товара рядом с ценой
     visionKey: String(store.get('visionKey', ''))       // ключ Google Cloud Vision (для перевода на картинке)
   };
  
@@ -613,6 +655,31 @@
   function calcRate() { return computeRate(state.auto, state.usdtRub, usdtCnyEff(), state.manualRate); }
   state.rate = calcRate();
  
+  /** Замер нагрузки: сколько миллисекунд за последнюю минуту съела каждая часть скрипта (видно в панели). */
+  const Perf = (() => {
+    const buckets = {};                      // имя → [{t, ms}]
+    function add(name, ms) {
+      const b = buckets[name] || (buckets[name] = []);
+      b.push({ t: Date.now(), ms });
+      if (b.length > 400) b.splice(0, b.length - 400);
+    }
+    function wrap(name, fn) {
+      return function () {
+        const t0 = performance.now();
+        try { return fn.apply(this, arguments); } finally { add(name, performance.now() - t0); }
+      };
+    }
+    function summary() {
+      const now = Date.now(), out = {};
+      for (const k in buckets) {
+        const arr = buckets[k].filter((x) => now - x.t < 60000);
+        out[k] = { ms: Math.round(arr.reduce((a, x) => a + x.ms, 0)), n: arr.length };
+      }
+      return out;
+    }
+    return { add, wrap, summary };
+  })();
+
   /** Запрос через GM_xmlhttpRequest (обход CORS/CSP), fallback — fetch. */
   function httpReq(opts) {
     const { method = 'GET', url, headers = {}, data, timeout = 7000 } = opts;
@@ -649,7 +716,10 @@
 .tb-rub{display:inline-block;margin:0 4px 0 6px;padding:0 5px;border-radius:4px;background:#fff1e6;color:#ff5000;
   font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:max(11px,.72em);font-weight:600;line-height:1.5;
   vertical-align:middle;white-space:nowrap;letter-spacing:0;text-decoration:none!important;text-transform:none;flex:none}
-.tb-rub.tb-rub-compact{margin:0 0 0 3px;padding:0;background:transparent;font-size:.85em}
+.tb-rub.tb-rub-compact{margin:0 0 0 3px;padding:0 3px;font-size:.85em}
+/* Узкая плашка цены (карусели на главной): рубли второй строкой внутри той же плашки */
+.tb-rub.tb-rub-stack{display:block!important;width:max-content;max-width:100%;margin:2px auto 1px!important;padding:0 4px!important;
+  font-size:11px!important;line-height:1.3!important;text-align:center;background:#fff1e6!important;color:#ff5000!important}
 .tb-rub.tb-rub-gone{display:none!important}
 .tb-rub.tb-rub-replace{margin:0 6px 0 0;padding:0;background:transparent;line-height:1.15;vertical-align:baseline}
 [data-rub-hide]{display:none!important}
@@ -672,7 +742,29 @@ html.tbrub-tr [data-tbrub-tt]::after{content:attr(data-tbrub-tt);position:absolu
   text-overflow:ellipsis;overflow-wrap:anywhere;text-indent:0;letter-spacing:0;pointer-events:none}
 html.tbrub-tr [data-tbrub-tt]:hover::after{bottom:auto;display:block;-webkit-line-clamp:unset;background:#fff;color:#222;z-index:20;
   box-shadow:0 3px 10px rgba(0,0,0,.2);border-radius:4px;padding:0 3px 2px 0}
-[data-tbrub-ann]::after{content:"  ·  " attr(data-tbrub-ann);color:#8a8f98;font-weight:400}
+/* Верхнее меню (site-nav): русские подписи длиннее — запрещаем перенос внутри пунктов */
+html.tbrub-tr #J_SiteNavBd .site-nav-menu-hd{white-space:nowrap!important}
+html.tbrub-tr #J_SiteNavBd>.site-nav-bd-l>li{margin-right:10px!important}
+html.tbrub-tr #J_SiteNavBd>.site-nav-bd-r>li{margin-left:10px!important}
+/* Лента «Вам может понравиться» на главной: заголовок в 2 строки вместо одной обрезанной (одинаково у всех карточек — сетка не прыгает) */
+html.tbrub-tr body .tb-pick-content-item .info-wrapper.single-line{height:40px!important;margin-bottom:2px!important}
+html.tbrub-tr body .tb-pick-content-item .info-wrapper.single-line>.info-wrapper-title{display:-webkit-box!important;-webkit-box-orient:vertical!important;
+  -webkit-line-clamp:2!important;height:40px!important;max-height:40px!important;overflow:hidden!important;line-height:20px!important;font-size:13.5px!important;white-space:normal!important}
+/* Карточка товара: бегущая строка «AI-подбор» над вариантами рассчитана на одну строку */
+html.tbrub-tr [class*="SKUDecision--"] [class*="textWrap--"]{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-height:24px!important}
+/* Отзыв целиком: оригинал (разрезанный на куски) скрыт, перевод — нашим блоком */
+[data-tbrub-rev]{font-size:0!important}
+[data-tbrub-rev]>.tbrub-rev{display:block;white-space:pre-wrap;color:inherit;font-family:inherit;letter-spacing:normal;margin:0}
+.tbrub-weight{display:inline-block;margin:0 0 0 8px;padding:1px 7px;border-radius:999px;background:#fff;color:#333;border:1px solid rgba(0,0,0,.12);
+  font:600 12px/1.5 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;vertical-align:middle;white-space:nowrap}
+/* Корзина: подпись цены над ценой (а не в одну строку с ней), варианты без разрыва слов по буквам */
+html.tbrub-tr .trade-cart-item-price .trade-price-container{white-space:normal!important}
+html.tbrub-tr .trade-cart-item-price .trade-price-label{display:block!important;white-space:normal!important}
+html.tbrub-tr [class*="trade-cart-item-sku"] [class*="label--"],html.tbrub-tr [class*="trade-cart-item-sku"] [class*="content--"]{word-break:normal!important;overflow-wrap:anywhere!important}
+/* Подсказки и плейсхолдер поиска: Taobao берёт их текст при клике, поэтому оригинал остаётся в DOM,
+   но показываем только перевод */
+[data-tbrub-ann]{font-size:0!important;letter-spacing:0!important}
+[data-tbrub-ann]::after{content:attr(data-tbrub-ann);font-size:var(--tbrub-ann-fs,14px);letter-spacing:normal}
  
 /* Шапка поиска: переведённые подписи кнопок шире 72px — переносим, не ломая геометрию */
 html body .search-suggest-buttons-wrapper>div[class^="search-suggest-button"]{box-sizing:border-box!important;padding:0 3px!important;
@@ -711,16 +803,16 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
 #tbrub-root button.tbrub-t.on::after{left:18px}
 #tbrub-root .tbrub-sep{height:1px;background:rgba(255,255,255,.1)}
 /* Перевод на картинке */
-.tbrub-ocr{position:fixed;left:0;top:0;overflow:hidden;pointer-events:none;z-index:2000}
+.tbrub-ocr{position:absolute;left:0;top:0;overflow:hidden;pointer-events:none;z-index:3;margin:0;padding:0;border:0}
 .tbrub-ocr-g{position:absolute;left:0;top:0;transform-origin:0 0}
 .tbrub-ocr-b{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden;box-sizing:border-box;
   border-radius:3px;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
-.tbrub-ocr-b span{display:block;width:100%;text-align:center;line-height:1.05;font-weight:600;overflow-wrap:normal;word-break:normal}
+.tbrub-ocr-b span{display:block;width:100%;text-align:center;line-height:1.1;font-weight:500;overflow-wrap:normal;word-break:normal;hyphens:manual}
 #tbrub-imgbtn{all:initial;position:fixed;z-index:999998;display:none;gap:4px;font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
 #tbrub-imgbtn button{all:unset;cursor:pointer;padding:5px 10px;border-radius:999px;background:rgba(28,28,32,.88);color:#fff;
   font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 #tbrub-imgbtn button:hover{background:#ff5000}
-#tbrub-toast{all:initial;position:fixed;right:14px;bottom:60px;z-index:999999;max-width:360px;padding:8px 12px;border-radius:10px;
+#tbrub-toast{all:initial;position:fixed;right:14px;top:14px;z-index:999999;max-width:360px;padding:8px 12px;border-radius:10px;
   background:rgba(28,28,32,.95);color:#fff;font:12px/1.4 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35)}
 `;
  
@@ -765,7 +857,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
  
   async function fetchRub() {
     try {
-      const v = parseRapira(JSON.parse(await httpReq({ url: 'https://api.rapira.net/market/symbol-thumb' })));
+      const v = parseRapira(JSON.parse(await httpReq({ url: 'https://api.rapira.net/open/market/rates', timeout: 15000 })));
       if (!v) throw new Error('USDT/RUB не найден в ответе Rapira');
       state.usdtRub = v; state.usdtRubTs = Date.now(); state.rubError = false;
       store.set('usdtRub', v); store.set('usdtRubTs', state.usdtRubTs);
@@ -832,7 +924,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
    *  Модель «сегмента»: [символ ¥] + [соседние узлы с цифрами] (поиск, главная, карточка),
    *  либо цена целиком в одном элементе («¥0.3», «约省¥0.68»). Хэшированные классы не нужны.
    * ══════════════════════════════════════════════════════════════════════ */
-  const IGNORE_SEL = '#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub,script,style,noscript,textarea,template';
+  const IGNORE_SEL = '#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub,.tbrub-rev,.tbrub-weight,script,style,noscript,textarea,template';
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
  
   function ownText(el) {
@@ -967,7 +1059,8 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       if (state.mode === 'replace' && (canHide || seg.kind !== 'sym')) {
         rec.replaced = true;
         badge.classList.add('tb-rub-replace');
-        badge.textContent = (seg.kind !== 'sym' && info.prefix ? info.prefix + ' ' : '') + rub;
+        const pre = seg.kind !== 'sym' ? ruPrefix(info.prefix) : '';
+        badge.textContent = (pre ? pre + ' ' : '') + rub;
         badge.title = 'Оригинал: ' + original + ' · 1 ¥ = ' + fmtNum(state.rate, 2) + ' ₽';
         if (style) {
           badge.style.fontSize = style.fontSize; badge.style.fontWeight = style.fontWeight;
@@ -1016,29 +1109,56 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       fitBadges(jobs.map((j) => recs.get(j.seg.anchor)).filter(Boolean));
     }
  
-    /** Узкие ячейки с обрезкой: сначала компактный бейдж, если не влезает — рубли уходят в подсказку. */
+    /** Узкие ячейки с обрезкой: компактный бейдж → рубли второй строкой → если и так не влезает, рубли в подсказку. */
     function clipped(h) {
       if (!h || h.clientWidth === 0) return false;
       const cs = getComputedStyle(h);
       return (cs.overflowX !== 'visible' || cs.textOverflow === 'ellipsis') && h.scrollWidth > h.clientWidth + 1;
     }
+    /** Бейдж вылез за предка с overflow:hidden, хотя сама цена внутри него видна (карточка уехала из карусели — не в счёт). */
+    function outOfClip(b, ref) {
+      const r = b.getBoundingClientRect();
+      if (!r.width) return false;                     // скрыт целиком (неактивная вкладка/слайд) — решим позже
+      const p = ref && ref.getBoundingClientRect ? ref.getBoundingClientRect() : null;
+      const inside = (x, c) => x.left >= c.left - 1 && x.right <= c.right + 1 && x.top >= c.top - 1 && x.bottom <= c.bottom + 1;
+      for (let a = b.parentElement, i = 0; a && i < 6 && a !== document.body; a = a.parentElement, i++) {
+        const cs = getComputedStyle(a);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const c = a.getBoundingClientRect();
+        if (p && p.width && !inside(p, c)) continue;
+        if (!inside(r, c)) return true;
+      }
+      return false;
+    }
+    const refOf = (r) => (r.anchor.nodeType === 1 ? r.anchor : r.anchor.parentElement);
+    const tightRec = (r) => r.badge.isConnected && (outOfClip(r.badge, refOf(r)) || clipped(r.badge.parentElement) ||
+      clipped(r.badge.parentElement && r.badge.parentElement.parentElement));
     function fitBadges(list) {
       const beside = list.filter((r) => !r.replaced && r.badge.isConnected);
       if (!beside.length) return;
       requestAnimationFrame(() => {
-        const tight = beside.filter((r) => clipped(r.badge.parentElement) || clipped(r.badge.parentElement && r.badge.parentElement.parentElement));
+        const tight = beside.filter(tightRec);
+        if (!tight.length) return;
         tight.forEach((r) => { r.badge.classList.add('tb-rub-compact'); r.badge.textContent = r.badge.textContent.replace('≈ ', '≈'); });
         requestAnimationFrame(() => {
-          tight.filter((r) => clipped(r.badge.parentElement) || clipped(r.badge.parentElement && r.badge.parentElement.parentElement))
-            .forEach((r) => {
+          const still = tight.filter(tightRec);
+          still.forEach((r) => {
+            r.badge.classList.remove('tb-rub-compact');
+            r.badge.classList.add('tb-rub-stack');
+            r.badge.textContent = r.badge.textContent.replace(/^≈\s*/, '≈ ');
+          });
+          requestAnimationFrame(() => {
+            still.filter(tightRec).forEach((r) => {
+              r.badge.classList.remove('tb-rub-stack');
               r.badge.classList.add('tb-rub-gone');
               const host = r.anchor.nodeType === 1 ? r.anchor : r.anchor.parentElement;
               if (host && !host.title) host.title = r.badge.title.replace(/ ·.*/, '') + ' ' + r.badge.textContent;
             });
+          });
         });
       });
     }
- 
+
     /** Проверка всех существующих записей: удалённые → убрать бейдж, изменённые → перерисовать. */
     function sweep(out) {
       for (const rec of Array.from(recs.values())) {
@@ -1077,6 +1197,10 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     function scanRoots(roots) {
+      const t0 = performance.now();
+      try { scanRootsRaw(roots); } finally { Perf.add('Цены', performance.now() - t0); }
+    }
+    function scanRootsRaw(roots) {
       const segs = [];
       sweep(segs);
       for (const r of roots) if (r && r.isConnected) collect(r, segs);
@@ -1096,7 +1220,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
    *  общий MutationObserver. Оригиналы хранятся, выключение восстанавливает текст без перезагрузки.
    * ══════════════════════════════════════════════════════════════════════ */
   const TL = 'ru';
-  const TR_SKIP_SEL = '#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub,script,style,noscript,textarea,code,pre,select,option,[contenteditable=""],[contenteditable="true"]';
+  const TR_SKIP_SEL = '#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub,.tbrub-rev,.tbrub-weight,script,style,noscript,textarea,code,pre,select,option,[contenteditable=""],[contenteditable="true"]';
   // Подсказки поиска: их текст читает сам Taobao при клике, поэтому перевод показываем рядом, не заменяя
   const TR_ANNOTATE_SEL = '.search-suggest-menu,.search-suggest-popup,[data-sg-type="placeholder"]';
   const TR_MAX_LEN = 400;
@@ -1124,6 +1248,16 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     let contested = new WeakSet();   // элементы, за которые «борется» React: только плашка, без записи в текст
     let io = null;
     let running = 0, timer = 0, pauseUntil = 0, saveTimer = 0;
+    // IntersectionObserver иногда не присылает событий (окно свёрнуто/перекрыто, особенности страницы) —
+    // тогда раз в секунду сами проверяем, что ждёт перевода рядом с экраном
+    const pendingEls = new Set();
+    let lastIOAt = 0, ioBroken = false, ioCheck = 0, sweepTimer = 0;
+    const NEAR_PX = 1500;
+    // отзывы: переводим текст отзыва целиком (Taobao режет его подсветкой ключевых слов на куски)
+    const REV_SEL = '[class*="Comment--"] [class*="content--"],[class*="Comment--"] [class*="appendContent--"]';
+    const REV_MAX = 900;
+    let revSrc = new WeakMap();
+    const revs = new Set();
     const stats = { done: 0, errors: 0 };
  
     function persist() {
@@ -1158,7 +1292,13 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         const { lead, trail } = split(task.full);
         if (task.annotate) {
           const p = t.parentElement;
-          if (p) p.setAttribute('data-tbrub-ann', tr);
+          if (p) {
+            if (!p.hasAttribute('data-tbrub-ann')) {
+              const fs = parseFloat(getComputedStyle(p).fontSize);
+              if (fs > 0) p.style.setProperty('--tbrub-ann-fs', fs + 'px');
+            }
+            p.setAttribute('data-tbrub-ann', tr);
+          }
           return;
         }
         const nv = lead + tr + trail;
@@ -1168,6 +1308,23 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         touched.add(t);
         t.nodeValue = nv;
         if (t.parentElement) queueClipCheck(t.parentElement);
+      } else if (task.type === 'rev') {
+        const el = task.el;
+        if (!el.isConnected || revSrc.get(el) !== task.full) return;
+        let d = el.querySelector(':scope > .tbrub-rev');
+        if (!d) {
+          const cs = getComputedStyle(el);
+          d = document.createElement('div');
+          d.className = 'tbrub-rev notranslate';
+          d.setAttribute('translate', 'no');
+          d.style.fontSize = parseFloat(cs.fontSize) > 0 ? cs.fontSize : '14px';
+          d.style.lineHeight = cs.lineHeight !== 'normal' && parseFloat(cs.lineHeight) > 0 ? cs.lineHeight : '1.6';
+          el.appendChild(d);
+        }
+        d.textContent = tr;
+        d.title = task.full;                       // оригинал — во всплывающей подсказке
+        el.setAttribute('data-tbrub-rev', '');
+        revs.add(el);
       } else if (task.type === 'tip') {
         const el = task.el;
         if (!el.isConnected) return;
@@ -1218,6 +1375,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
           return false;
         });
         for (const el of hits) {
+          shrinkToFit(el);
           if (el.hasAttribute('title') && CJK_RE.test(el.getAttribute('title')) === false) continue;
           const rec = touchedAttr.get(el) || {};
           if (!('title' in rec)) rec.title = el.getAttribute('title');   // null → при выключении удалить
@@ -1228,6 +1386,23 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     const normText = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+    /** Короткая подпись не влезла (заголовок плитки, кнопка): уменьшаем шрифт до 80%, без переноса и смены размеров блока. */
+    const shrunk = new Set();
+    function shrinkToFit(el) {
+      if (shrunk.has(el) || !el.isConnected) return;
+      const txt = normText(el);
+      if (!txt || txt.length > 32) return;
+      const cs = getComputedStyle(el);
+      const f0 = parseFloat(cs.fontSize);
+      if (!(f0 >= 11) || el.clientHeight > parseFloat(cs.lineHeight || f0 * 1.4) * 1.6) return;   // только однострочные
+      shrunk.add(el);
+      const clippedUp = () => { for (let a = el, i = 0; a && i < 4; a = a.parentElement, i++) if (isClipped(a)) return true; return false; };
+      for (let f = f0 - 1; f >= Math.max(10, f0 * 0.8); f -= 1) {
+        el.style.fontSize = f + 'px';
+        if (!clippedUp()) return;
+      }
+    }
  
     /** Запоминаем, что писали в узел: если страница вернёт оригинал — это «борьба». */
     function noteWrite(t, full) {
@@ -1315,13 +1490,32 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       enqueue({ type: 'box', box, full: txt });
     }
  
+    /** Текст отзыва без нашего перевода. */
+    function revText(el) {
+      let out = '';
+      const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = tw.nextNode())) if (!n.parentElement.closest('.tbrub-rev')) out += n.nodeValue;
+      return out.replace(/\s+/g, ' ').trim();
+    }
+
+    /** true — отзыв взят в работу целиком; false — пусть переводится обычным способом. */
+    function enqueueRev(el) {
+      const txt = revText(el);
+      if (!wanted(txt) || txt.length > REV_MAX) return false;
+      if (revSrc.get(el) === txt && el.querySelector(':scope > .tbrub-rev')) return true;
+      revSrc.set(el, txt);
+      enqueue({ type: 'rev', el, full: txt });
+      return true;
+    }
+
     function enqueue(task) {
       const { core } = split(task.full);
-      if (!core || core.length > TR_MAX_LEN) return;
+      if (!core || core.length > (task.type === 'rev' ? REV_MAX : TR_MAX_LEN)) return;
       const local = localTranslate(core);
       if (local !== null) { apply(task, local); return; }
       const hit = cache.get(core);
-      if (hit !== undefined) { apply(task, hit); return; }
+      if (hit !== undefined) { apply(task, fixRu(hit)); return; }
       if ((fails.get(core) || 0) >= 3) return;
       const list = waiting.get(core);
       if (list) list.push(task); else waiting.set(core, [task]);
@@ -1334,6 +1528,10 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       if (!v || written.get(t) === v || !wanted(v)) return;
       const p = t.parentElement;
       if (skipEl(p)) return;
+      if (state.revWhole) {
+        const rev = p.closest(REV_SEL);
+        if (rev && enqueueRev(rev)) return;
+      }
       checkRevert(t);
       const annotate = !!p.closest(TR_ANNOTATE_SEL);
       const box = annotate ? null : boxFor(t);
@@ -1355,11 +1553,43 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     function onIntersect(entries) {
+      lastIOAt = Date.now();
+      ioBroken = false;
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         io.unobserve(e.target);
+        pendingEls.delete(e.target);
         activated.add(e.target);
         activate(e.target);
+      }
+    }
+
+    const nearViewport = (el, below) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width && !r.height) return false;
+      return r.bottom > -NEAR_PX / 2 && r.top < innerHeight + (below || NEAR_PX);
+    };
+
+    function armIOCheck() {
+      if (ioCheck || ioBroken) return;
+      const at = Date.now();
+      ioCheck = setTimeout(() => {
+        ioCheck = 0;
+        if (lastIOAt < at && pendingEls.size && !document.hidden) { ioBroken = true; sweep(); }
+      }, 1500);
+    }
+
+    // Во вкладке в фоне браузер не присылает событий IntersectionObserver — переводим то, что рядом с первым экраном,
+    // заранее: открыли товар в фоновой вкладке → переключились → он уже на русском.
+    function sweep() {
+      if (!io || (!ioBroken && !document.hidden)) return;
+      for (const el of Array.from(pendingEls)) {
+        if (!el.isConnected) { pendingEls.delete(el); continue; }
+        if (!nearViewport(el)) continue;
+        pendingEls.delete(el);
+        io.unobserve(el);
+        activated.add(el);
+        activate(el);
       }
     }
  
@@ -1382,14 +1612,27 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       if (activated.has(el)) { activate(el); return; }
       if (observed.has(el) || skipEl(el)) return;
       observed.add(el);
+      pendingEls.add(el);
       io.observe(el);
+      armIOCheck();
     }
  
     function handleText(t) {
       if (written.get(t) === t.nodeValue) return;
       const el = t.parentElement;
       if (!el) return;
-      if (activated.has(el)) enqueueText(t); else watchEl(el);
+      if (activated.has(el)) { enqueueText(t); return; }
+      // бесплатно и сразу: перевод уже известен (словарь/кэш), или это скрытое меню/подсказка,
+      // которая появится при наведении мыши (IntersectionObserver о ней не сообщит)
+      const core = split(t.nodeValue).core;
+      if (localTranslate(core) !== null || cache.has(core) || (core.length <= 40 && isHiddenEl(el))) {
+        activated.add(el); activate(el); return;
+      }
+      watchEl(el);
+    }
+    function isHiddenEl(el) {
+      const r = el.getBoundingClientRect();
+      return r.width === 0 && r.height === 0;
     }
  
     function schedule() {
@@ -1428,7 +1671,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
           return;
         }
         batch.forEach((core, i) => {
-          const tr = parts[i] || core;
+          const tr = fixRu(parts[i] || core);
           cache.set(core, tr);
           const tasks = waiting.get(core) || [];
           waiting.delete(core);
@@ -1451,16 +1694,26 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       if (io || !document.body) return;
       document.documentElement.setAttribute('translate', 'no');   // просим браузер не переводить поверх нас
       document.documentElement.classList.add('notranslate', 'tbrub-tr');
-      io = new IntersectionObserver(onIntersect, { rootMargin: '700px 0px 700px 0px' });
+      io = new IntersectionObserver(onIntersect, { rootMargin: (NEAR_PX / 2) + 'px 0px ' + NEAR_PX + 'px 0px' });
       scan(document.body);
+      sweepTimer = setInterval(sweep, 1000);
     }
  
     function stop() {
       if (io) io.disconnect();
       io = null;
+      clearInterval(sweepTimer);
+      pendingEls.clear();
       activated = new WeakSet();
       observed = new WeakSet();
       waiting.clear();
+      for (const el of revs) {
+        el.removeAttribute('data-tbrub-rev');
+        const d = el.querySelector(':scope > .tbrub-rev');
+        if (d) d.remove();
+      }
+      revs.clear();
+      revSrc = new WeakMap();
       document.documentElement.removeAttribute('translate');
       document.documentElement.classList.remove('notranslate', 'tbrub-tr');
       for (const t of touched) {
@@ -1485,6 +1738,8 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         }
       }
       touchedAttr.clear();
+      shrunk.forEach((el) => el.style.removeProperty('font-size'));
+      shrunk.clear();
       document.querySelectorAll('[data-tbrub-ann]').forEach((el) => el.removeAttribute('data-tbrub-ann'));
       stats.done = 0;
     }
@@ -1492,6 +1747,17 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     return {
       start, stop, scan,
       isOwnWrite: (t) => written.get(t) === t.nodeValue,
+      ioBroken: () => ioBroken,
+      cached: (core) => cache.get(core),
+      remember: (core, tr) => { cache.set(core, tr); persist(); },
+      /** Исходный (китайский) текст узла, даже если мы его уже перевели. */
+      origOf: (t) => (written.get(t) === t.nodeValue && original.has(t) ? original.get(t) : t.nodeValue),
+      /** Перевести отзывы заново (переключили «отзыв целиком»). */
+      resetReviews() {
+        for (const el of revs) { el.removeAttribute('data-tbrub-rev'); const d = el.querySelector(':scope > .tbrub-rev'); if (d) d.remove(); }
+        revs.clear(); revSrc = new WeakMap();
+        if (io) document.querySelectorAll(REV_SEL).forEach((el) => scan(el));
+      },
       status: () => ({ done: stats.done, queue: waiting.size, errors: stats.errors, active: !!io })
     };
   })();
@@ -1682,10 +1948,16 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     /** Реально показанный адрес; при сбое srcset — атрибут src или ленивый data-src. */
+    // Ленивые картинки Taobao: в src заглушка (s.gif), настоящий адрес — в data-src, грузится только при прокрутке
+    const PLACEHOLDER_RE = /^data:|\/s\.gif(?:$|[?#])|spaceball|\/1x1\.|blank\.(?:gif|png)/i;
+    const lazySrc = (el) => el.getAttribute('data-src') || el.getAttribute('data-ks-lazyload') || el.getAttribute('data-lazy-src') || '';
+    const isPlaceholder = (el) => { const c = el.currentSrc || el.getAttribute('src') || ''; return !c || PLACEHOLDER_RE.test(c); };
     function imgSrc(el) {
       const c = el.currentSrc;
-      if (c && /^(https?:)?\/\//i.test(c)) return c;
-      return el.getAttribute('src') || el.getAttribute('data-src') || el.src || '';
+      if (c && /^(https?:)?\/\//i.test(c) && !PLACEHOLDER_RE.test(c)) return c;
+      const lz = lazySrc(el);
+      if (lz && !PLACEHOLDER_RE.test(lz)) return lz;
+      return el.getAttribute('src') || el.src || '';
     }
  
     /** Подходит ли картинка для перевода: не миниатюра-карточка, достаточно крупная, с нормальным адресом. */
@@ -1772,7 +2044,10 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       document.addEventListener('mouseleave', hide);
     }
  
-    return { install, hide, fullUrl, imgSrc, refresh, eligible };
+    /** Миниатюра товара (в поиске, ленте) — внутри ссылки на товар. */
+    // вне карточки товара любая картинка-ссылка (плитки акций на главной Tmall/Taobao ведут на страницы акций, а не на товар)
+    const isThumb = (el) => !!el.closest(CARD_LINK_SEL) || (!isItemPage() && !!el.closest('a[href]'));
+    return { install, hide, fullUrl, imgSrc, refresh, eligible, isThumb, lazySrc, isPlaceholder };
   })();
  
   /* ══════════════════════════════════════════════════════════════════════
@@ -1788,7 +2063,14 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
   const ENGINE_NAMES = { paddle: 'PaddleOCR', tesseract: 'Tesseract', vision: 'Google Vision' };
  
   const OcrEngines = (() => {
-    const status = { paddle: '', tesseract: '' };     // '' — не загружался, 'ok', 'loading' или текст ошибки
+    const status = { paddle: '', tesseract: '' };
+    const debug = {};                                  // последние сырые результаты распознавания (для отладки)
+    let quiet = false;                                 // автоперевод в фоне: никаких всплывающих сообщений
+    let progress = '';                                 // что сейчас грузится (для строки состояния в панели)
+    let notifyT = 0;
+    const notify = () => { if (!notifyT) notifyT = setTimeout(() => { notifyT = 0; Ui.render(); }, 400); };
+    const say = (t, ms) => { if (!quiet) toast(t, ms); };
+    const setQuiet = (q) => { quiet = !!q; };     // '' — не загружался, 'ok', 'loading' или текст ошибки
     const mb = (n) => (n / 1048576).toFixed(1);
  
     // ── IndexedDB: кэш библиотек и моделей ──
@@ -1860,7 +2142,9 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
             const now = Date.now();
             if (now - lastT < 300) return;
             lastT = now;
-            toast('⏳ Загрузка (один раз): ' + label + ' — ' + mb(l) + (t ? ' из ' + mb(t) : '') + ' МБ', 60000);
+            progress = 'загрузка «' + label + '»: ' + mb(l) + (t ? ' из ' + mb(t) : '') + ' МБ';
+            notify();
+            say('⏳ Загрузка (один раз): ' + label + ' — ' + mb(l) + (t ? ' из ' + mb(t) : '') + ' МБ', 60000);
           });
           if (type === 'text' ? !data || data.length < 20 : !data || data.byteLength < 1000) throw new Error('пустой ответ CDN');
           idbPut(key, data);
@@ -1875,8 +2159,11 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     function evalLib(code, name) {
       const module = { exports: {} };
       // eslint-disable-next-line no-new-func
-      const fn = new Function('module', 'exports', 'define', code + '\n//# sourceURL=tbrub-' + name + '.js');
-      fn.call(window, module, module.exports, undefined);
+      // сборки вида `var ort = (()=>{…})()` внутри функции объявляют локальную переменную — возвращаем её явно
+      const fn = new Function('module', 'exports', 'define',
+        code + '\n;return typeof ' + name + ' !== "undefined" ? ' + name + ' : undefined;\n//# sourceURL=tbrub-' + name + '.js');
+      const ret = fn.call(window, module, module.exports, undefined);
+      if (ret && (ret.InferenceSession || ret.createWorker)) return ret;
       const ex = module.exports;
       if (ex && (ex.InferenceSession || ex.createWorker)) return ex;
       if (ex && ex[name]) return ex[name];
@@ -1903,7 +2190,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         const det = await cdnFile(PADDLE_PKG + 'ch_PP-OCRv4_det_infer.onnx', 'bin', 'модель поиска текста');
         const rec = await cdnFile(PADDLE_PKG + 'ch_PP-OCRv4_rec_infer.onnx', 'bin', 'модель иероглифов');
         const keys = await cdnFile(PADDLE_PKG + 'ppocr_keys_v1.txt', 'text', 'словарь');
-        toast('⏳ PaddleOCR: запуск…', 60000);
+        say('⏳ PaddleOCR: запуск…', 60000);
         let lastErr = null;
         // wasm: сначала из нашего кэша (blob:), при отказе — напрямую с CDN (новый экземпляр библиотеки)
         for (const mode of ['blob', 'cdn']) {
@@ -1926,7 +2213,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         }
         throw lastErr;
       })();
-      paddleP.catch((e) => { paddleP = null; status.paddle = String((e && e.message) || e).slice(0, 140); });
+      paddleP.catch((e) => { paddleP = null; status.paddle = String((e && e.message) || e).slice(0, 140); notify(); });
       return paddleP;
     }
  
@@ -1982,16 +2269,197 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       return ctcDecode(o.data, T, C, P.chars);
     }
  
+    /** Строка → картинка 48px высотой (вертикальную строку поворачиваем). */
+    function lineImage(src, L) {
+      const w = L.x1 - L.x0, h = L.y1 - L.y0;
+      const vertical = h >= w * 1.5;
+      const RH = 48;
+      const RW = Math.max(16, Math.min(1600, Math.ceil((RH * (vertical ? h : w)) / (vertical ? w : h))));
+      const { cx } = whiteCanvas(RW, RH);
+      if (vertical) { cx.translate(0, RH); cx.rotate(-Math.PI / 2); cx.drawImage(src, L.x0, L.y0, w, h, 0, 0, RH, RW); }
+      else cx.drawImage(src, L.x0, L.y0, w, h, 0, 0, RW, RH);
+      return { RW, px: cx.getImageData(0, 0, RW, RH).data };
+    }
+
+    /** Распознавание пачкой: строки близкой длины — одним запуском модели (в разы быстрее, чем по одной). */
+    async function paddleRecBatch(P, src, boxes) {
+      const RH = 48;
+      const imgs = boxes.map((b) => lineImage(src, b));
+      const order = imgs.map((_, i) => i).sort((a, b) => imgs[a].RW - imgs[b].RW);
+      const res = new Array(boxes.length);
+      for (let k = 0; k < order.length;) {
+        const BATCH = P.noBatch ? 1 : 8;
+        const ids = order.slice(k, k + BATCH);
+        k += ids.length;
+        const MW = Math.max.apply(null, ids.map((i) => imgs[i].RW));
+        const plane = RH * MW, f = new Float32Array(ids.length * 3 * plane);   // поля справа — 0 (как в PaddleOCR)
+        ids.forEach((id, j) => {
+          const { RW, px } = imgs[id];
+          const base = j * 3 * plane;
+          for (let y = 0; y < RH; y++) for (let x = 0; x < RW; x++) {
+            const q = (y * RW + x) * 4, o = y * MW + x;
+            f[base + o] = px[q + 2] / 127.5 - 1;
+            f[base + plane + o] = px[q + 1] / 127.5 - 1;
+            f[base + 2 * plane + o] = px[q] / 127.5 - 1;
+          }
+        });
+        let out;
+        try { out = await P.sRec.run({ [P.sRec.inputNames[0]]: new P.ort.Tensor('float32', f, [ids.length, 3, RH, MW]) }); }
+        catch (e) {
+          if (ids.length === 1 || P.noBatch) throw e;
+          P.noBatch = true;                            // модель без пакетного режима — дальше по одной строке
+          console.warn('[tb-rub] PaddleOCR: пакетный режим не поддержан, распознаю по строке', e);
+          k -= ids.length;
+          continue;
+        }
+        const o = out[P.sRec.outputNames[0]];
+        const T = o.dims[1], C = o.dims[2];
+        if (!P.chars || P.chars.length < C) P.chars = ctcChars(P.keys, C);
+        ids.forEach((id, j) => { res[id] = ctcDecode(o.data.subarray(j * T * C, (j + 1) * T * C), T, C, P.chars); });
+        await new Promise((r) => setTimeout(r, 0));   // отдать поток странице между пачками
+      }
+      return res;
+    }
+
+    /* ── Пул фоновых потоков (Web Worker) для PaddleOCR ──
+     * Распознавание не блокирует страницу, и несколько фото обрабатываются параллельно на разных ядрах.
+     * Код потока собирается из тех же функций, что и основной путь (toString), плюс OffscreenCanvas вместо canvas. */
+    const Pool = (() => {
+      let workers = null, initP = null, failed = false, seq = 0;
+      const pending = new Map();
+      const size = () => Math.min(3, Math.max(1, Math.floor((navigator.hardwareConcurrency || 2) / 4)));
+      function source() {
+        const fns = [tilesFor, detBoxes, ctcDecode, ctcChars, paddleDetect, lineImage, paddleRecBatch].map(String).join('\n');
+        return [
+          'const whiteCanvas = (w, h) => { const c = new OffscreenCanvas(w, h); const cx = c.getContext("2d", { willReadFrequently: true });',
+          '  cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h); return { c, cx }; };',
+          fns,
+          'let P = null;',
+          'async function init(d) {',
+          '  const module = { exports: {} };',
+          '  const ort = new Function("module", "exports", "define", d.lib + "\\n;return typeof ort !== \'undefined\' ? ort : undefined;")(module, module.exports, undefined) || module.exports;',
+          '  ort.env.wasm.numThreads = 1; ort.env.wasm.proxy = false; ort.env.wasm.simd = true;',
+          '  const u = URL.createObjectURL(new Blob([d.wasm], { type: "application/wasm" }));',
+          '  ort.env.wasm.wasmPaths = { "ort-wasm-simd.wasm": u, "ort-wasm.wasm": u };',
+          '  const opt = { executionProviders: ["wasm"], graphOptimizationLevel: "all" };',
+          '  const sDet = await ort.InferenceSession.create(new Uint8Array(d.det), opt);',
+          '  const sRec = await ort.InferenceSession.create(new Uint8Array(d.rec), opt);',
+          '  P = { ort, sDet, sRec, keys: d.keys, chars: null };',
+          '}',
+          'async function run(d) {',
+          '  const src = d.bmp, W = d.W, H = d.H;',
+          '  const boxes = await paddleDetect(P, src, W, H);',
+          '  const recs = await paddleRecBatch(P, src, boxes);',
+          '  if (src.close) src.close();',
+          '  return boxes.map((b, i) => ({ text: recs[i].text, score: recs[i].score, x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }));',
+          '}',
+          'onmessage = async (e) => { const d = e.data;',
+          '  try { if (d.type === "init") { await init(d); postMessage({ id: d.id, ok: true }); }',
+          '        else { const lines = await run(d); postMessage({ id: d.id, ok: true, lines }); } }',
+          '  catch (err) { postMessage({ id: d.id, ok: false, error: String((err && err.message) || err) }); } };'
+        ].join('\n');
+      }
+      function call(w, msg, transfer) {
+        return new Promise((res, rej) => {
+          const id = ++seq;
+          pending.set(id, { res, rej, w });
+          w.busy++;
+          w.postMessage(Object.assign({ id }, msg), transfer || []);
+        });
+      }
+      function init() {
+        if (failed) return Promise.reject(new Error('пул потоков недоступен'));
+        if (initP) return initP;
+        status.paddle = 'loading'; notify();
+        initP = (async () => {
+          const lib = await cdnFile(ORT_PKG + 'ort.wasm-core.min.js', 'text', 'ONNX Runtime');
+          const wasm = await cdnFile(ORT_PKG + 'ort-wasm-simd.wasm', 'bin', 'ONNX Runtime (wasm)');
+          const det = await cdnFile(PADDLE_PKG + 'ch_PP-OCRv4_det_infer.onnx', 'bin', 'модель поиска текста');
+          const rec = await cdnFile(PADDLE_PKG + 'ch_PP-OCRv4_rec_infer.onnx', 'bin', 'модель иероглифов');
+          const keys = await cdnFile(PADDLE_PKG + 'ppocr_keys_v1.txt', 'text', 'словарь');
+          const url = URL.createObjectURL(new Blob([source()], { type: 'text/javascript' }));
+          workers = [];
+          for (let i = 0; i < size(); i++) {
+            const w = new Worker(url);
+            w.busy = 0;
+            w.onmessage = (e) => {
+              const p = pending.get(e.data.id);
+              if (!p) return;
+              pending.delete(e.data.id);
+              w.busy--;
+              if (e.data.ok) p.res(e.data); else p.rej(new Error(e.data.error));
+            };
+            w.onerror = (e) => {
+              for (const [id, p] of pending) if (p.w === w) { pending.delete(id); p.rej(new Error('ошибка потока: ' + (e.message || 'неизвестно'))); }
+              w.busy = 0;
+            };
+            workers.push(w);
+          }
+          await Promise.all(workers.map((w) => call(w, { type: 'init', lib, wasm, det, rec, keys })));
+          status.paddle = 'ok';
+          progress = '';
+          threads = workers.length;
+          notify();
+          console.info('[tb-rub] PaddleOCR: потоков распознавания — ' + workers.length);
+        })();
+        initP.catch((e) => {
+          failed = true; initP = null; progress = ''; notify();
+          if (workers) workers.forEach((w) => w.terminate());
+          workers = null;
+          console.warn('[tb-rub] PaddleOCR: фоновые потоки недоступны, распознаю в основном потоке', e);
+        });
+        return initP;
+      }
+      async function run(canvas, W, H) {
+        await init();
+        const w = workers.reduce((a, b) => (a.busy <= b.busy ? a : b));
+        const bmp = await createImageBitmap(canvas);
+        return (await call(w, { type: 'run', bmp, W, H }, [bmp])).lines;
+      }
+      return { run, init, size: () => (failed ? 1 : size()), ok: () => !failed };
+    })();
+
+    let threads = 0;
+    /** Заранее, после загрузки страницы: поднять движок, чтобы первое фото не ждало загрузки моделей. */
+    function warmup() {
+      if (state.ocrEngine === 'vision') return;
+      if (state.ocrEngine === 'tesseract') { tessInit().catch(() => {}); return; }
+      Pool.init().catch(() => paddleInit().catch((e) => { status.paddle = String((e && e.message) || e).slice(0, 140); notify(); }));
+    }
+    /** Строка состояния для панели. */
+    function describe() {
+      const p = status.paddle, t = status.tesseract;
+      if (state.ocrEngine === 'vision') return 'Распознавание: Google Vision' + (state.visionKey ? '' : ' — ✗ не задан ключ');
+      if (state.ocrEngine === 'tesseract') return 'Распознавание: Tesseract — ' + (t === 'ok' ? 'готово ✓' : t === 'loading' ? 'загрузка…' : t ? '✗ ' + t : 'ждёт первого фото');
+      if (p === 'ok') return 'Распознавание: готово ✓ (PaddleOCR' + (threads ? ', фоновых потоков: ' + threads : ', основной поток') + ')';
+      if (p === 'loading' || progress) return 'Распознавание: ' + (progress || 'запуск PaddleOCR…');
+      if (p) return 'Распознавание: ✗ PaddleOCR не запустился — ' + p + (t === 'ok' ? ' · работает Tesseract' : '');
+      return 'Распознавание: подготовка…';
+    }
+
     async function paddle(src, W, H) {
+      if (Pool.ok()) {
+        try {
+          const all = await Pool.run(src, W, H);
+          debug.paddle = all.map((l) => [l.text, Math.round(l.score * 100), Math.round(l.x0), Math.round(l.y0), Math.round(l.x1), Math.round(l.y1)]);
+          const lines = all.filter((l) => l.text.trim() && l.score >= 0.5).map((l) => Object.assign({}, l, { text: l.text.trim() }));
+          return mergeLines(lines).map((b) => ({ text: tidyOcrText(b.text), verts: rectVerts(b.x0, b.y0, b.x1, b.y1) }));
+        } catch (e) {
+          if (Pool.ok()) throw e;                      // ошибка конкретной картинки
+          // пул не поднялся — ниже основной путь
+        }
+      }
       const P = await paddleInit();
       const boxes = await paddleDetect(P, src, W, H);
       const lines = [];
-      for (let i = 0; i < boxes.length; i++) {
-        if (i % 4 === 0) toast('⏳ PaddleOCR: строка ' + (i + 1) + ' из ' + boxes.length + '…', 60000);
-        const r = await paddleRecLine(P, src, boxes[i]);
+      debug.paddle = [];
+      if (boxes.length) say('⏳ PaddleOCR: строк — ' + boxes.length + '…', 60000);
+      const recs = await paddleRecBatch(P, src, boxes);
+      recs.forEach((r, i) => {
         const text = r.text.trim();
+        debug.paddle.push([text, Math.round(r.score * 100), Math.round(boxes[i].x0), Math.round(boxes[i].y0), Math.round(boxes[i].x1), Math.round(boxes[i].y1)]);
         if (text && r.score >= 0.5) lines.push(Object.assign({ text }, boxes[i]));
-      }
+      });
       return mergeLines(lines).map((b) => ({ text: tidyOcrText(b.text), verts: rectVerts(b.x0, b.y0, b.x1, b.y1) }));
     }
  
@@ -2004,14 +2472,14 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         const code = await cdnFile(TESS_PKG, 'text', 'Tesseract.js');
         const T = evalLib(code, 'Tesseract');
         if (!T || !T.createWorker) throw new Error('Tesseract.js не инициализировался');
-        toast('⏳ Tesseract: загрузка ядра и модели chi_sim (≈5 МБ, кэшируется браузером)…', 90000);
+        say('⏳ Tesseract: загрузка ядра и модели chi_sim (≈5 МБ, кэшируется браузером)…', 90000);
         const worker = await T.createWorker('chi_sim', 1, {
           errorHandler: (e) => console.warn('[tb-rub] Tesseract:', e)
         });
         status.tesseract = 'ok';
         return worker;
       })();
-      tessP.catch((e) => { tessP = null; status.tesseract = String((e && e.message) || e).slice(0, 140); });
+      tessP.catch((e) => { tessP = null; status.tesseract = String((e && e.message) || e).slice(0, 140); notify(); });
       return tessP;
     }
  
@@ -2041,7 +2509,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       return res.map((b) => b.text).join(' ');
     }
  
-    return { paddle, tesseract, check, status };
+    return { paddle, tesseract, check, status, debug, setQuiet, warmup, describe, parallel: () => (state.ocrEngine === 'tesseract' ? 1 : Pool.size()) };
   })();
  
   /* ══════════════════════════════════════════════════════════════════════
@@ -2053,11 +2521,12 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
   const ImgOcr = (() => {
     const VISION_URL = 'https://vision.googleapis.com/v1/images:annotate?key=';
     const VISION_FEATURE = 'TEXT_DETECTION';
-    const CACHE_KEY = 'ocrCache1';
-    const CACHE_MAX = 80;
+    const CACHE_KEY = 'ocrCache2';                 // v2: новый словарь и раскладка — старый кэш не используем
+    const CACHE_MAX = 400;                          // переведённые фото хранятся между визитами
     const overlays = new Map();        // img → {src, root, g, W, H}
     const inflight = new Set();
     const memory = new Map();          // url → результат
+    if (store.get('ocrCache1', null)) store.set('ocrCache1', {});
     let persisted = store.get(CACHE_KEY, {});
     if (!persisted || typeof persisted !== 'object') persisted = {};
     let raf = 0, frame = 0;
@@ -2085,7 +2554,13 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         if (typeof GM_xmlhttpRequest === 'function') {
           GM_xmlhttpRequest({
             method: 'GET', url, responseType: 'arraybuffer', timeout: 25000,
-            onload: (r) => (r.status >= 200 && r.status < 300 && r.response ? resolve(new Uint8Array(r.response)) : reject(new Error('HTTP ' + r.status))),
+            onload: (r) => {
+              if (!(r.status >= 200 && r.status < 300 && r.response)) { reject(new Error('HTTP ' + r.status)); return; }
+              const b = r.response;
+              if (b instanceof ArrayBuffer || ArrayBuffer.isView(b)) resolve(new Uint8Array(b.buffer || b));
+              else if (b && typeof b.arrayBuffer === 'function') b.arrayBuffer().then((x) => resolve(new Uint8Array(x)), reject);
+              else resolve(new Uint8Array(0));
+            },
             onerror: () => reject(new Error('network error')),
             ontimeout: () => reject(new Error('timeout'))
           });
@@ -2101,16 +2576,30 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     /** Сначала оригинал в полном размере, при неудаче — тот адрес, что реально на странице. */
     function candidates(img) {
       const src = ImgTr.imgSrc(img);
+      // миниатюра товара: хватает той же картинки, что на экране (≈460px), полноразмерную не качаем
+      if (ImgTr.isThumb(img)) return [absUrl(src)].filter((u) => u && /^https?:/i.test(u));
       return Array.from(new Set([ImgTr.fullUrl(src), absUrl(src)].filter((u) => u && /^https?:/i.test(u))));
     }
  
+    /** Запасной путь: обычный fetch страницы (картинки alicdn отдаются с CORS). */
+    const pageFetch = (u) => fetch(u, { mode: 'cors', credentials: 'omit' })
+      .then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); }).then((b) => new Uint8Array(b));
+
+    let lastDl = 0;
     async function download(cands) {
+      // бережно к серверам Alibaba: не чаще одной картинки в 350 мс
+      const wait = lastDl + 350 - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastDl = Date.now();
       let lastErr = new Error('Не удалось скачать картинку');
       for (const u of cands) {
-        try {
-          const bytes = await fetchBytes(u);
-          if (bytes.length > 200 && sniffMime(bytes)) return { url: u, bytes };
-        } catch (e) { lastErr = e; }
+        for (const get of [fetchBytes, pageFetch]) {
+          try {
+            const bytes = await get(u);
+            if (bytes.length > 200 && sniffMime(bytes)) return { url: u, bytes };
+            lastErr = new Error('Картинка в неподдерживаемом формате (' + bytes.length + ' байт)');
+          } catch (e) { lastErr = e; }
+        }
       }
       throw lastErr;
     }
@@ -2162,7 +2651,11 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     async function translateMany(list) {
       const out = new Map();
       const todo = [];
-      for (const t of list) { const l = localTranslate(t); if (l !== null) out.set(t, l); else todo.push(t); }
+      for (const t of list) {
+        const l = localTranslate(t);
+        const c = l === null ? Translator.cached(t) : undefined;      // общий кэш с переводом страницы — без лишних запросов
+        if (l !== null) out.set(t, l); else if (c !== undefined) out.set(t, c); else todo.push(t);
+      }
       async function run(items) {
         if (!items.length) return;
         for (let attempt = 0; attempt < 2; attempt++) {
@@ -2170,7 +2663,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
             const data = JSON.parse(await httpReq({ url: gtxUrl('zh-CN', TL, items.map(prepForGoogle).join('\n')), timeout: 12000 }));
             const joined = parseGtx(data);
             const parts = items.length === 1 ? [joined.trim()] : splitGtx(joined, items.length);
-            if (parts) { items.forEach((t, i) => { if (parts[i]) out.set(t, parts[i]); }); return; }
+            if (parts) { items.forEach((t, i) => { if (parts[i]) { out.set(t, parts[i]); Translator.remember(t, parts[i]); } }); return; }
             break;                                              // Google склеил строки → делим
           } catch (e) { if (attempt === 1) return; }
         }
@@ -2249,16 +2742,31 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       }
       const p = await prepare(bytes, false);
       if (!quiet) toast('⏳ Распознаю текст (' + ENGINE_NAMES[eng] + ', на вашем компьютере)…', 120000);
-      const blocks = eng === 'paddle' ? await OcrEngines.paddle(p.ctx.canvas, p.W, p.H) : await OcrEngines.tesseract(p.ctx.canvas);
+      const t0 = performance.now();
+      OcrEngines.setQuiet(quiet);
+      let blocks;
+      try { blocks = eng === 'paddle' ? await OcrEngines.paddle(p.ctx.canvas, p.W, p.H) : await OcrEngines.tesseract(p.ctx.canvas); }
+      finally { OcrEngines.setQuiet(false); }
+      Perf.add('Распознавание фото', performance.now() - t0);
       return { W: p.W, H: p.H, ctx: p.ctx, blocks };
     }
  
     /** Полный конвейер для картинки → результат {W,H,b:[…]} (из кэша или через движок OCR). */
     async function recognize(img, quiet) {
-      const cands = candidates(img);
+      return recognizeCands(candidates(img), quiet);
+    }
+
+    /** Фоновая подготовка перевода по адресу (фото галереи товара, которые показываются при наведении на миниатюру). */
+    async function prefetch(url) {
+      if (!url || fromCache(engineOrder(true), [url])) return false;
+      try { await recognizeCands([url], true); return true; } catch (_) { return false; }
+    }
+
+    async function recognizeCands(cands, quiet) {
       if (!cands.length) throw new Error('Не удалось определить адрес картинки');
       const engs = engineOrder(quiet);
       const hit = fromCache(engs, cands);
+      if (hit && hit.b && !hit.b.length) throw Object.assign(new Error('Китайский текст на картинке не найден'), { silent: true, info: true });
       if (hit) return hit;
       if (engs.length === 1 && engs[0] === 'vision' && !state.visionKey && !askKey()) {
         throw Object.assign(new Error('Нужен ключ Google Vision'), { silent: true });
@@ -2278,8 +2786,16 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       const { W, H, ctx, eng } = got;
       const raw = got.blocks.filter((b) => CJK_RE.test(b.text));
       const items = raw.map((b) => ({ text: b.text, q: quadInfo(b.verts), verts: b.verts }))
-        .filter((x) => x.q.h >= 8 && x.q.w >= 8);
-      if (!items.length) throw Object.assign(new Error('Китайский текст на картинке не найден (' + ENGINE_NAMES[eng] + ')'), { silent: true, info: true });
+        .filter((x) => x.q.h >= 8 && x.q.w >= 8)
+        // одиночный иероглиф-значок (保, 新, 赠 в кружке) не переводим — плашка закрыла бы иконку
+        .filter((x) => (x.text.match(/[\u3400-\u9fff]/g) || []).length >= 2 || /[0-9A-Za-z]/.test(x.text));
+      if (!items.length) {
+        const empty = { W, H, b: [], eng };                // запоминаем «текста нет» — при следующем визите не распознаём заново
+        const ke = cacheKey(eng, url);
+        memory.set(ke, empty);
+        persist(ke, empty);
+        throw Object.assign(new Error('Китайский текст на картинке не найден (' + ENGINE_NAMES[eng] + ')'), { silent: true, info: true });
+      }
       if (!quiet) toast('⏳ Перевожу ' + items.length + ' фрагм.…', 30000);
       const tr = await translateMany(Array.from(new Set(items.map((x) => x.text))));
       const res = { W, H, b: [], eng };
@@ -2291,10 +2807,11 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         const bg = ringColor(ctx, W, H, Math.min.apply(null, xs) - pad, Math.min.apply(null, ys) - pad,
           Math.max.apply(null, xs) + pad, Math.max.apply(null, ys) + pad);
         const n = (it.text.match(/[\u3400-\u9fff]/g) || []).length;
+        const m = (it.text.match(/[0-9A-Za-z%.+\-]/g) || []).length;
         const r1 = (v) => Math.round(v * 10) / 10;
-        res.b.push({ tr: t, cx: r1(it.q.cx), cy: r1(it.q.cy), w: r1(it.q.w), h: r1(it.q.h), ang: r1(it.q.ang), n, bg });
+        res.b.push({ tr: t, cx: r1(it.q.cx), cy: r1(it.q.cy), w: r1(it.q.w), h: r1(it.q.h), ang: r1(it.q.ang), n, m, bg });
       }
-      if (!res.b.length) throw Object.assign(new Error('Не удалось перевести текст на картинке'), { silent: true, info: true });
+      if (!res.b.length) throw Object.assign(new Error('Не удалось перевести текст на картинке'), { silent: true });   // сбой перевода — автоперевод повторит
       const k = cacheKey(eng, url);
       memory.set(k, res);
       persist(k, res);
@@ -2302,8 +2819,8 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     /** Подбор размера шрифта, чтобы перевод поместился в рамку (бинарный поиск). */
-    function fitFont(el, sp, hi) {
-      let lo = 5;
+    function fitFont(el, sp, hi, minFs) {
+      let lo = minFs || 5;
       hi = Math.max(hi, lo);
       let best = lo;
       for (let i = 0; i < 9 && hi - lo > 0.5; i++) {
@@ -2319,8 +2836,17 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       const o = overlays.get(img);
       if (!o) return;
       o.root.remove();
+      if (o.ro) o.ro.disconnect();
+      if (o.relHost && !o.relHost.querySelector(':scope > .tbrub-ocr')) o.relHost.style.removeProperty('position');
       overlays.delete(img);
       ImgTr.refresh();
+    }
+
+    /** Слой живёт рядом с картинкой (в том же контейнере) — прокручивается вместе со страницей без участия скрипта. */
+    function hostOf(img) {
+      let h = img.parentElement;
+      if (h && h.tagName === 'PICTURE') h = h.parentElement;
+      return h;
     }
  
     function posFrac(str) {
@@ -2329,13 +2855,54 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       return [f(t[0]), f(t[1] || t[0])];
     }
  
-    /** Накладывает слой на текущее положение/масштаб картинки (учитывает object-fit/object-position). */
+    /** Положение и масштаб слоя: пересчитываются только при изменении размера картинки (ResizeObserver), не на каждом кадре. */
+    function place(img, o) {
+      if (!img.isConnected || ImgTr.imgSrc(img) !== o.src) { removeOverlay(img); return; }
+      const host = hostOf(img);
+      if (!host) return;
+      if (o.root.parentNode !== host) host.appendChild(o.root);       // страница перерисовала контейнер — возвращаем слой
+      if (getComputedStyle(host).position === 'static') { host.style.position = 'relative'; o.relHost = host; }
+      const w = img.offsetWidth, h = img.offsetHeight;
+      if (w < 2 || h < 2) { o.root.style.visibility = 'hidden'; return; }
+      // координаты картинки внутри контейнера
+      let x = img.offsetLeft, y = img.offsetTop;
+      if (img.offsetParent !== host) {
+        const a = img.getBoundingClientRect(), b = host.getBoundingClientRect();
+        x = a.left - b.left - host.clientLeft + host.scrollLeft; y = a.top - b.top - host.clientTop + host.scrollTop;
+      }
+      const c = getComputedStyle(img);
+      const fit = c.objectFit;
+      const kx = w / o.W, ky = h / o.H;
+      let sx = kx, sy = ky;
+      if (fit === 'contain') sx = sy = Math.min(kx, ky);
+      else if (fit === 'cover') sx = sy = Math.max(kx, ky);
+      else if (fit === 'none') sx = sy = 1;
+      else if (fit === 'scale-down') sx = sy = Math.min(1, kx, ky);
+      const pos = posFrac(c.objectPosition);
+      const ox = (w - o.W * sx) * pos[0], oy = (h - o.H * sy) * pos[1];
+      const st = o.root.style;
+      st.left = x + 'px'; st.top = y + 'px'; st.width = w + 'px'; st.height = h + 'px';
+      st.visibility = c.visibility === 'hidden' ? 'hidden' : 'visible';
+      o.g.style.transform = 'translate(' + ox + 'px,' + oy + 'px) scale(' + sx + ',' + sy + ')';
+    }
+
+    /** Раз в секунду: картинка сменилась/исчезла → убрать слой; контейнер перерисован → вернуть слой на место. */
+    function validate() {
+      for (const [img, o] of Array.from(overlays)) {
+        if (!img.isConnected || ImgTr.imgSrc(img) !== o.src) { removeOverlay(img); continue; }
+        if (o.root.parentNode !== hostOf(img)) place(img, o);
+      }
+    }
+    setInterval(() => { if (overlays.size) validate(); }, 1000);
+
+    // старый вариант (position:fixed + пересчёт на каждом кадре) — оставлен только для справки, не используется
     function syncOne(img, o, n) {
       if (!img.isConnected || ImgTr.imgSrc(img) !== o.src) { removeOverlay(img); return; }
       const r = img.getBoundingClientRect();
       const ix0 = Math.max(r.left, 0), iy0 = Math.max(r.top, 0), ix1 = Math.min(r.right, innerWidth), iy1 = Math.min(r.bottom, innerHeight);
       if (r.width < 2 || r.height < 2 || ix1 - ix0 < 2 || iy1 - iy0 < 2) { o.root.style.visibility = 'hidden'; return; }
-      const cs = getComputedStyle(img);
+      if (!o.cs || n % 30 === 0) { const c = getComputedStyle(img); o.cs = { objectFit: c.objectFit, objectPosition: c.objectPosition, visibility: c.visibility }; }
+      const cs = o.cs;
       const fit = cs.objectFit;
       const kx = r.width / o.W, ky = r.height / o.H;
       let sx = kx, sy = ky;
@@ -2350,7 +2917,8 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       o.g.style.transform = 'translate(' + ox + 'px,' + oy + 'px) scale(' + sx + ',' + sy + ')';
       if (n % 6 === 0 || st.visibility === 'hidden') {                            // перекрыта ли картинка шапкой/окном
         const top = document.elementFromPoint((ix0 + ix1) / 2, (iy0 + iy1) / 2);
-        const ok = !top || top === img || (img.parentElement && img.parentElement.contains(top)) ||
+        const box = img.parentElement && (img.parentElement.parentElement || img.parentElement);
+        const ok = !top || top === img || (box && box.contains(top)) ||
           (top.closest && top.closest('#tbrub-root,#tbrub-imgbtn,#tbrub-toast'));
         st.visibility = ok && cs.visibility !== 'hidden' ? 'visible' : 'hidden';
       }
@@ -2364,20 +2932,51 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       raf = requestAnimationFrame(loop);
     }
  
+    const rectOf = (b, kw, kh, W, H) => {
+      const pad = Math.max(2, b.h * 0.1);
+      const bw = Math.min((b.w + 2 * pad) * kw, W), bh = Math.min((b.h + 2 * pad) * kh, H);
+      let x = b.cx - bw / 2, y = b.cy - bh / 2;
+      if (!b.ang) { x = Math.max(0, Math.min(W - bw, x)); y = Math.max(0, Math.min(H - bh, y)); }
+      return { x, y, w: bw, h: bh };
+    };
+    const overlapArea = (a, c) => Math.max(0, Math.min(a.x + a.w, c.x + c.w) - Math.max(a.x, c.x)) *
+      Math.max(0, Math.min(a.y + a.h, c.y + c.h) - Math.max(a.y, c.y));
+    /** Оценка исходного кегля: иероглиф ≈ квадрат, латиница/цифры ≈ половина ширины. */
+    function srcFont(b) {
+      const units = Math.max(1, b.n + 0.5 * Math.max(0, (b.m || 0)));
+      return Math.min(b.h, Math.sqrt((b.w * b.h) / units));
+    }
+
     function show(img, res) {
       removeOverlay(img);
       const root = document.createElement('div');
       root.className = 'tbrub-ocr notranslate';
       root.setAttribute('translate', 'no');
+      root.setAttribute('lang', 'ru');                 // для переносов (hyphens:auto)
       root.style.visibility = 'hidden';
-      root.style.zIndex = '999990';
       const g = document.createElement('div');
       g.className = 'tbrub-ocr-g';
       g.style.width = res.W + 'px';
       g.style.height = res.H + 'px';
       root.appendChild(g);
-      document.body.appendChild(root);
-      for (const b of res.b) {
+      (hostOf(img) || document.body).appendChild(root);
+
+      // не мельче ~7px на экране (миниатюры показываются уменьшенными)
+      const shown = img.getBoundingClientRect().width || res.W;
+      const minFs = Math.max(5, Math.min(7 * res.W / shown, 40));
+      // дубли распознавания (одна надпись двумя рамками) — оставляем бо́льшую
+      const blocks = res.b.slice().sort((a, c) => c.w * c.h - a.w * a.h);
+      const base = [];
+      const kept = [];
+      for (const b of blocks) {
+        const r = rectOf(b, 1, 1, res.W, res.H);
+        if (base.some((o) => overlapArea(o, r) > 0.6 * r.w * r.h)) continue;
+        base.push(r); kept.push(b);
+      }
+      // плашки не выходят за свою рамку дальше, чем позволяют соседи: без наложений друг на друга
+      const placed = [];
+      const STEPS = [[1, 1], [1.25, 1], [1, 1.25], [1.25, 1.25], [1.5, 1.2], [1.2, 1.5], [1.6, 1.6]];
+      kept.forEach((b, idx) => {
         const el = document.createElement('div');
         el.className = 'tbrub-ocr-b';
         const sp = document.createElement('span');
@@ -2385,51 +2984,69 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         el.appendChild(sp);
         el.style.background = 'rgb(' + b.bg.join(',') + ')';
         el.style.color = textColorFor(b.bg);
+        el.style.transform = 'rotate(' + (b.ang || 0) + 'deg)';
         g.appendChild(el);
-        const pad = Math.max(2, b.h * 0.1);
-        const fo = Math.min(b.h, Math.sqrt((b.w * b.h) / Math.max(1, b.n)));      // оценка исходного кегля
-        for (const [kw, kh] of [[1, 1], [1.3, 1.2], [1.6, 1.5], [1.9, 1.8]]) {
-          const bw = Math.min((b.w + 2 * pad) * kw, res.W), bh = Math.min((b.h + 2 * pad) * kh, res.H);
-          let left = b.cx - bw / 2, top = b.cy - bh / 2;
-          if (!b.ang) { left = Math.max(0, Math.min(res.W - bw, left)); top = Math.max(0, Math.min(res.H - bh, top)); }
-          el.style.left = left + 'px'; el.style.top = top + 'px';
-          el.style.width = bw + 'px'; el.style.height = bh + 'px';
-          el.style.transform = 'rotate(' + (b.ang || 0) + 'deg)';
-          const f = fitFont(el, sp, Math.min(bh, fo * 1.25));
-          if (f >= fo * 0.62) break;                              // читаемо — расширять рамку не нужно
+        const fo = srcFont(b);
+        const setRect = (r) => { el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px'; };
+        let best = null;
+        for (const [kw, kh] of STEPS) {
+          const r = rectOf(b, kw, kh, res.W, res.H);
+          if (kw !== 1 || kh !== 1) {
+            const own = base[idx];
+            const hits = base.some((o, j) => j !== idx && overlapArea(o, r) > 0.02 * r.w * r.h) ||
+              placed.some((o) => overlapArea(o, r) > 0.02 * r.w * r.h);
+            if (hits || overlapArea(own, r) < own.w * own.h * 0.99) continue;
+          }
+          setRect(r);
+          const f = fitFont(el, sp, Math.min(r.h * 0.9, fo), minFs);    // не крупнее исходного текста
+          if (!best || f > best.f + 0.3) best = { r, f };
+          if (f >= fo * 0.7) break;                                     // читаемо — дальше не расширяем
         }
-      }
-      overlays.set(img, { src: ImgTr.imgSrc(img), root, g, W: res.W, H: res.H });
-      syncOne(img, overlays.get(img), 0);
-      if (!raf) raf = requestAnimationFrame(loop);
+        setRect(best.r);
+        fitFont(el, sp, Math.min(best.r.h * 0.9, fo), minFs);
+        placed.push(best.r);
+      });
+      try {                                                      // отладка: что распознано и как переведено
+        root.setAttribute('data-tbrub-debug', JSON.stringify({ eng: res.eng, W: res.W, H: res.H,
+          b: res.b.map((b) => [b.tr, Math.round(b.cx), Math.round(b.cy), Math.round(b.w), Math.round(b.h)]),
+          raw: res.eng === 'paddle' ? OcrEngines.debug.paddle : undefined }));
+      } catch (_) { /* не важно */ }
+      const o = { src: ImgTr.imgSrc(img), root, g, W: res.W, H: res.H, relHost: null, ro: null };
+      overlays.set(img, o);
+      place(img, o);
+      if (typeof ResizeObserver === 'function') { o.ro = new ResizeObserver(() => place(img, o)); o.ro.observe(img); }
     }
- 
+
     async function toggle(img, quiet) {
-      if (!img) return;
-      if (overlays.has(img)) { if (!quiet) removeOverlay(img); return; }
-      if (inflight.has(img)) return;
+      if (!img) return 'skip';
+      if (overlays.has(img)) { if (!quiet) removeOverlay(img); return 'skip'; }
+      if (inflight.has(img)) return 'skip';
       inflight.add(img);
       ImgTr.refresh();
+      let status = 'error';
       try {
         const res = await recognize(img, quiet);
         if (img.isConnected) show(img, res);
-        toast((quiet ? '🖼 Фото переведено: ' : 'Переведено фрагментов: ') + res.b.length +
-          (res.eng ? ' · ' + ENGINE_NAMES[res.eng] : '') + (quiet ? '' : ' · «↩ Оригинал» убирает перевод'), quiet ? 1800 : 2600);
+        status = 'ok';
+        if (!quiet) toast('Переведено фрагментов: ' + res.b.length + (res.eng ? ' · ' + ENGINE_NAMES[res.eng] : '') + ' · «↩ Оригинал» убирает перевод', 2600);
       } catch (e) {
-        console.warn('[tb-rub] перевод на картинке:', e);
+        status = e && e.info ? 'empty' : 'error';
+        if (!(e && e.info)) console.warn('[tb-rub] перевод на картинке:', e);
         if (e && e.silent) { if (!quiet) toast(e.info ? e.message : 'Перевод на картинке отменён', e.info ? 3500 : 1500); }
-        else toast('⚠ ' + describeError(e), 9000);
+        else if (!quiet) toast('⚠ ' + describeError(e), 9000);
       } finally {
         inflight.delete(img);
         ImgTr.refresh();
       }
+      return status;
     }
  
     return {
-      toggle, askKey,
+      toggle, askKey, prefetch,
       has: (img) => overlays.has(img),
       busy: (img) => inflight.has(img),
-      removeAll: () => Array.from(overlays.keys()).forEach(removeOverlay)
+      removeAll: () => Array.from(overlays.keys()).forEach(removeOverlay),
+      validate
     };
   })();
  
@@ -2441,7 +3058,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     /\/item\.htm/.test(location.pathname) || !!document.querySelector('[class*="MainTitle--"],[class*="mainTitle--"]');
  
   const ImgAuto = (() => {
-    let io = null, timer = 0, busy = false;
+    let io = null, timer = 0, busy = false, loadHooked = false;
     let seen = new WeakSet();
     const tried = new WeakMap();      // img → src, для которого уже пробовали
     const queue = [];
@@ -2455,36 +3072,129 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       }
       pump();
     }
- 
-    async function pump() {
-      if (busy) return;
-      busy = true;
-      try {
-        while (queue.length && state.imgAuto && state.imgTr) {
-          const img = queue.shift();
-          if (!img.isConnected || ImgOcr.has(img) || ImgOcr.busy(img) || !ImgTr.eligible(img, 260, 120)) continue;
-          const src = ImgTr.imgSrc(img);
-          if (tried.get(img) === src) continue;
-          tried.set(img, src);
-          await ImgOcr.toggle(img, true);
-        }
-      } finally { busy = false; }
+
+    /** Карточка товара: все крупные фото. Остальные страницы: только баннеры (широкие или крупные картинки вне карточек товаров). */
+    function autoEligible(img) {
+      if (ImgTr.isThumb(img)) {                      // миниатюры товаров: поиск, лента, «С этим смотрят»
+        if (!state.imgThumbs) return false;
+        const r = img.getBoundingClientRect();
+        return r.width >= 90 && r.height >= 90 && !!ImgTr.fullUrl(ImgTr.imgSrc(img));
+      }
+      if (isItemPage()) return ImgTr.eligible(img, 260, 120);
+      if (!ImgTr.eligible(img, 300, 50)) return false;
+      const r = img.getBoundingClientRect();
+      return r.width / r.height >= 2 || (r.width >= 480 && r.height >= 240);
+    }
+
+    /** Ближайшая к экрану картинка — первой: что видно сейчас, потом то, до чего пользователь доскроллит. */
+    function takeNext() {
+      let bi = -1, bd = Infinity;
+      queue.forEach((img, i) => {
+        const r = img.getBoundingClientRect();
+        const d = r.bottom < 0 ? -r.bottom + 2000 : Math.max(0, r.top - innerHeight);
+        if (d < bd) { bd = d; bi = i; }
+      });
+      return bi < 0 ? null : queue.splice(bi, 1)[0];
     }
  
-    function scan() {
-      if (!io || document.hidden) return;
-      for (const img of document.images) {
-        if (seen.has(img) || tried.get(img) === ImgTr.imgSrc(img)) continue;
-        seen.add(img);
-        io.observe(img);
+    let active = 0;
+    /** Несколько фото параллельно — по числу фоновых потоков распознавания. */
+    function pump() {
+      const limit = OcrEngines.parallel();
+      while (active < limit && queue.length && state.imgAuto && state.imgTr && !Guard.paused()) {
+        const img = takeNext();
+        if (!img) break;
+        if (!img.isConnected || ImgOcr.has(img) || ImgOcr.busy(img) || !autoEligible(img)) continue;
+        const src = ImgTr.imgSrc(img);
+        if (tried.get(img) === src) continue;
+        tried.set(img, src);
+        active++;
+        busy = true;
+        ImgOcr.toggle(img, true).then((st) => {
+          if (st === 'error') setTimeout(() => { if (tried.get(img) === src) tried.delete(img); }, 30000);   // сбой сети — повторим позже
+        }).finally(() => {
+          active--;
+          busy = active > 0;
+          pump();
+          if (!active && !queue.length) prefetchGallery();
+        });
       }
     }
  
+    /** Фото галереи товара (слева): показываются при наведении на миниатюру — готовим перевод заранее, по адресу. */
+    const galleryDone = new Set();
+    let galleryBusy = false;
+    async function prefetchGallery() {
+      if (galleryBusy || !isItemPage() || !state.imgAuto || !state.imgTr || Guard.paused()) return;
+      const urls = Array.from(document.querySelectorAll('[class*="thumbnailItem--"] img,[class*="thumbnail--"] img'))
+        .map((i) => ImgTr.fullUrl(ImgTr.imgSrc(i))).filter((u) => u && !galleryDone.has(u));
+      if (!urls.length) return;
+      galleryBusy = true;
+      try {
+        for (const u of urls) {
+          if (busy) break;                             // фото на экране важнее — продолжим на следующем проходе
+          galleryDone.add(u);
+          await ImgOcr.prefetch(u);
+        }
+      } finally { galleryBusy = false; }
+    }
+
+    /** Описание товара: Taobao грузит фото только при прокрутке. Запускаем загрузку сами — на ~6 экранов вперёд,
+     *  чтобы к моменту прокрутки картинка уже была скачана и переведена. */
+    function preloadLazy() {
+      if (!isItemPage() || Guard.paused()) return;
+      const limit = innerHeight * 6;
+      for (const img of document.querySelectorAll('img[data-src],img[data-ks-lazyload],img[data-lazy-src]')) {
+        if (!ImgTr.isPlaceholder(img) || ImgTr.isThumb(img)) continue;
+        const lz = ImgTr.lazySrc(img);
+        if (!lz || /^data:/i.test(lz)) continue;
+        const r = img.getBoundingClientRect();
+        if (r.top > limit || r.bottom < -innerHeight) continue;
+        img.src = lz.startsWith('//') ? 'https:' + lz : lz;
+      }
+    }
+
+    /** Картинка сменила адрес (галерея, карусель): если перевод уже готов — показываем сразу. */
+    function onLoad(img) {
+      if (!io || !state.imgAuto || !state.imgTr || !img.isConnected || ImgOcr.has(img) || ImgOcr.busy(img)) return;
+      if (!autoEligible(img)) return;
+      const src = ImgTr.imgSrc(img);
+      if (tried.get(img) === src) return;
+      if (!queue.includes(img)) queue.unshift(img);
+      pump();
+    }
+
+    function scan() {
+      if (!io) return;
+      preloadLazy();
+      // во вкладке в фоне IntersectionObserver молчит — проверяем положение картинок сами (товар открыт в фоне → фото готовы)
+      const broken = Translator.ioBroken() || document.hidden;
+      let added = false;
+      for (const img of document.images) {
+        if (tried.get(img) === ImgTr.imgSrc(img)) continue;
+        if (broken) {                                  // IntersectionObserver молчит — проверяем положение сами
+          const r = img.getBoundingClientRect();
+          if (r.width && r.bottom > -800 && r.top < innerHeight + 3000 && !queue.includes(img)) { queue.push(img); added = true; }
+          continue;
+        }
+        if (seen.has(img)) continue;
+        seen.add(img);
+        io.observe(img);
+      }
+      if (added) pump();
+      if (!busy && !queue.length) prefetchGallery();
+    }
+ 
     function start() {
-      if (io || !state.imgAuto || !state.imgTr || !document.body || !isItemPage()) return;
-      io = new IntersectionObserver(onIntersect, { threshold: 0.35 });
+      if (io || !state.imgAuto || !state.imgTr || !document.body) return;
+      // заранее, с запасом ~3 экрана ниже: к моменту прокрутки фото уже переведено
+      io = new IntersectionObserver(onIntersect, { rootMargin: '800px 0px 3000px 0px', threshold: 0 });
       scan();
       timer = setInterval(scan, 2000);
+      if (!loadHooked) {
+        loadHooked = true;
+        document.addEventListener('load', (e) => { const t = e.target; if (t && t.tagName === 'IMG') onLoad(t); }, true);
+      }
     }
  
     function stop() {
@@ -2501,18 +3211,124 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
   /* ══════════════════════════════════════════════════════════════════════
    *  7. SPA: общий MutationObserver с дебаунсом, пересчёт при смене SKU
    * ══════════════════════════════════════════════════════════════════════ */
+  /* ══════════════════════════════════════════════════════════════════════
+   *  6⅞⁰. ЗАЩИТА ОТ КАПЧИ: увидели проверку Taobao — 15 минут ничего не делаем сами
+   *       (автоклики, подгрузка фото, распознавание), только перевод текста и цены.
+   * ══════════════════════════════════════════════════════════════════════ */
+  const Guard = (() => {
+    const SEL = '#baxia-dialog-content,.baxia-dialog,#nocaptcha,.nc-container,.nc_wrapper,iframe[src*="punish"],iframe[src*="captcha"],#J_MIDDLEWARE_FRAME_WIDGET';
+    let until = Number(store.get('guardUntil', 0)) || 0;
+    function check() {
+      const hit = /\/punish|_____tmd_____|captcha/i.test(location.pathname + location.search) || !!document.querySelector(SEL);
+      if (hit && Date.now() > until - 14 * 60 * 1000) {
+        until = Date.now() + 15 * 60 * 1000;
+        store.set('guardUntil', until);
+        console.warn('[tb-rub] Taobao показал проверку (капчу) — автоматические действия скрипта на паузе 15 минут');
+      }
+      return hit;
+    }
+    return { check, paused: () => Date.now() < until };
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+   *  6⅞+. ОТЗЫВЫ: «Все отзывы» сразу открываются сеткой фото (кнопка 图集 в шторке)
+   * ══════════════════════════════════════════════════════════════════════ */
+  const Reviews = (() => {
+    const done = new WeakSet();
+    let lastOpen = null;
+    function check() {
+      if (!state.revAlbum || Guard.paused()) return;
+      const dr = Array.from(document.querySelectorAll('[class*="Drawer--"]'))
+        .find((d) => d.querySelector('[class*="Comments--"]') && d.getBoundingClientRect().width > 200);
+      if (!dr) { lastOpen = null; return; }
+      if (lastOpen === dr && done.has(dr)) return;
+      lastOpen = dr;
+      if (done.has(dr)) return;
+      const btn = dr.querySelector('[class*="picFliterWrap--"]');
+      if (!btn) return;
+      done.add(dr);
+      if (!dr.querySelector('[class*="commentsImgWrap--"]')) btn.click();
+    }
+    function reset() { lastOpen = null; }
+    return { check, reset, done };
+  })();
+
+  /* ══════════════════════════════════════════════════════════════════════
+   *  6⅞++. ВЕС ТОВАРА рядом с ценой (из характеристик или названия выбранного варианта)
+   * ══════════════════════════════════════════════════════════════════════ */
+  const Weight = (() => {
+    const W_RE = /(\d+(?:\.\d+)?)\s*(kg|KG|Kg|千克|公斤|斤|克|g)(?![a-zA-Z])/;
+    const KEY_RE = /毛重|净重|重量|单重|净含量|商品重/;
+    const SKIP_RE = /承重|载重|最大承|承载|负重/;
+    const MULT = { kg: 1, KG: 1, Kg: 1, '千克': 1, '公斤': 1, '斤': 0.5, '克': 0.001, g: 0.001 };
+    let el = null, lastTxt = '';
+
+    function origText(root) {
+      let out = '';
+      const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = tw.nextNode())) if (!n.parentElement.closest(OWN_SEL)) out += Translator.origOf(n) + ' ';
+      return out.replace(/\s+/g, ' ');
+    }
+    function parse(s) {
+      const m = W_RE.exec(s);
+      if (!m) return null;
+      const v = parseFloat(m[1]) * MULT[m[2]];
+      return v > 0 && v < 2000 ? v : null;
+    }
+    function detect() {
+      for (const it of document.querySelectorAll('[class*="InfoItem--"],[class*="infoItem--"],[class*="paramsInfoItem"]')) {
+        const t = origText(it);
+        if (!KEY_RE.test(t) || SKIP_RE.test(t)) continue;
+        const v = parse(t.slice(t.search(KEY_RE)));
+        if (v) return { v, src: 'характеристики' };
+      }
+      const sel = document.querySelector('[class*="valueItem"][class*="isSelected"],[class*="valueItem"][class*="selected"],[class*="valueItem"][aria-checked="true"]');
+      if (sel) {
+        const t = origText(sel);
+        if (!SKIP_RE.test(t)) { const v = parse(t); if (v) return { v, src: 'вариант товара' }; }
+      }
+      return null;
+    }
+    function host() {
+      const list = Array.from(document.querySelectorAll('[class*="priceWrap--"],[class*="PriceWrap--"]'))
+        .filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.top + scrollY < 900; });
+      return list[0] || null;
+    }
+    function update() {
+      if (!state.showWeight || !isItemPage()) { if (el) { el.remove(); el = null; } return; }
+      const w = detect();
+      const h = w && host();
+      if (!w || !h) { if (el) { el.remove(); el = null; } return; }
+      const v = Math.round(w.v * 10) / 10;
+      const txt = '⚖ ' + (v < 0.1 ? '< 0,1' : '≈ ' + fmtNum(v, 1)) + ' кг';
+      if (!el || !el.isConnected || el.parentElement !== h) {
+        if (el) el.remove();
+        el = document.createElement('span');
+        el.className = 'tbrub-weight notranslate';
+        el.setAttribute('translate', 'no');
+        h.appendChild(el);
+      }
+      if (lastTxt !== txt || el.textContent !== txt) { el.textContent = txt; lastTxt = txt; }
+      el.title = 'Вес товара (' + w.src + '): ' + fmtNum(w.v, 3).replace(/,?0+$/, '') + ' кг';
+    }
+    return { update };
+  })();
+
+  const OWN_SEL = '#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub,.tbrub-rev,.tbrub-weight';
   const Watch = (() => {
     const zones = new Set();
     const trNodes = new Set();
     let timer = 0, firstAt = 0;
  
     const isOwnNode = (n) => (n.nodeType === 1
-      ? (n.classList.contains('tb-rub') || n.id === 'tbrub-root' || n.id === 'tbrub-toast' || n.id === 'tbrub-imgbtn' || n.classList.contains('tbrub-ocr'))
-      : !!(n.parentElement && n.parentElement.closest('#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub')));
+      ? (n.classList.contains('tb-rub') || n.id === 'tbrub-root' || n.id === 'tbrub-toast' || n.id === 'tbrub-imgbtn' ||
+        n.classList.contains('tbrub-ocr') || n.classList.contains('tbrub-rev') || n.classList.contains('tbrub-weight'))
+      : !!(n.parentElement && n.parentElement.closest(OWN_SEL)));
  
     function isOwn(r) {
       const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
-      if (t && t.closest('#tbrub-root,#tbrub-toast,#tbrub-imgbtn,.tbrub-ocr,.tb-rub')) return true;
+      if (t && t.closest(OWN_SEL)) return true;
       if (r.type === 'characterData') return Translator.isOwnWrite(r.target);
       const nodes = Array.from(r.addedNodes).concat(Array.from(r.removedNodes));
       return nodes.length > 0 && nodes.every(isOwnNode);
@@ -2534,7 +3350,12 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     }
  
     function flush() {
+      const t0 = performance.now();
+      try { flushRaw(); } finally { Perf.add('Изменения страницы', performance.now() - t0); }
+    }
+    function flushRaw() {
       timer = 0; firstAt = 0;
+      Guard.check();
       const z = topmost(Array.from(zones).filter((e) => e.isConnected).map(widen));
       zones.clear();
       if (z.length > 200) Prices.fullScan(); else Prices.scanRoots(z);
@@ -2574,11 +3395,13 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       document.addEventListener('click', (e) => {
         const t = e.target;
         if (t && t.closest && t.closest('#SkuPanel_tbpcDetail_ssr2025,[class*="sku" i],[class*="valueItem" i]')) {
-          [40, 200, 600, 1400].forEach((ms) => setTimeout(() => Prices.fullScan(), ms));
+          [40, 200, 600, 1400].forEach((ms) => setTimeout(() => { Prices.fullScan(); Weight.update(); }, ms));
         }
       }, true);
       window.addEventListener('pageshow', () => setTimeout(() => Prices.fullScan(), 200));
-      setInterval(() => { if (!document.hidden) Prices.fullScan(); }, 3000);
+      // изменения ловит MutationObserver; полный проход — редкая страховка
+      setInterval(() => { if (!document.hidden) Prices.fullScan(); }, 10000);
+      setInterval(() => { if (!document.hidden) { Weight.update(); Reviews.check(); } }, 1500);
     }
  
     return { start };
@@ -2687,6 +3510,18 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         render();
       });
       rowImg.append(mk('span', '', 'Перевод на картинках (кнопки при наведении)'), tImg);
+      const rowRev = mk('div', 'tbrub-sw');
+      const tRev = toggle(() => { state.revWhole = !state.revWhole; store.set('revWhole', state.revWhole); Translator.resetReviews(); render(); });
+      rowRev.append(mk('span', '', 'Отзыв переводить целиком'), tRev);
+      const rowAlbum = mk('div', 'tbrub-sw');
+      const tAlbum = toggle(() => { state.revAlbum = !state.revAlbum; store.set('revAlbum', state.revAlbum); Reviews.reset(); render(); });
+      rowAlbum.append(mk('span', '', 'Все отзывы — сразу фото сеткой'), tAlbum);
+      const rowWeight = mk('div', 'tbrub-sw');
+      const tWeight = toggle(() => { state.showWeight = !state.showWeight; store.set('showWeight', state.showWeight); Weight.update(); render(); });
+      rowWeight.append(mk('span', '', 'Вес товара рядом с ценой'), tWeight);
+      const rowSame = mk('div', 'tbrub-sw');
+      const tSame = toggle(() => { state.sameTab = !state.sameTab; store.set('sameTab', state.sameTab); render(); });
+      rowSame.append(mk('span', '', 'Товары открывать в этой же вкладке'), tSame);
  
       // фото: движок распознавания и автоперевод
       const sImg = mk('div');
@@ -2696,6 +3531,7 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         engBtns[k] = btn(label, () => {
           state.ocrEngine = k; store.set('ocrEngine', k);
           if (k === 'vision' && !state.visionKey) ImgOcr.askKey();
+          OcrEngines.warmup();
           render();
         });
       });
@@ -2710,44 +3546,31 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
         if (state.imgAuto) ImgAuto.start(); else ImgAuto.stop();
         render();
       });
-      rowAuto.append(mk('span', '', 'Автоперевод фото на странице товара'), tAuto);
+      rowAuto.append(mk('span', '', 'Автоперевод фото (заранее, до прокрутки)'), tAuto);
+      const rowThumbs = mk('div', 'tbrub-sw');
+      const tThumbs = toggle(() => { state.imgThumbs = !state.imgThumbs; store.set('imgThumbs', state.imgThumbs); render(); });
+      rowThumbs.append(mk('span', '', 'Фото в карточках товаров (поиск, лента)'), tThumbs);
       const engStatus = mk('div', 'tbrub-sub');
-      const rowCheck = mk('div', 'tbrub-row');
-      const checkOut = mk('div', 'tbrub-sub');
-      const bCheck = btn('Проверить движки', async () => {
-        if (bCheck.disabled) return;
-        bCheck.disabled = true;
-        const lines = [];
-        for (const k of ['paddle', 'tesseract']) {
-          checkOut.textContent = lines.concat(ENGINE_NAMES[k] + ': проверяю…').join('\n');
-          try {
-            const t = await OcrEngines.check(k);
-            lines.push(ENGINE_NAMES[k] + ': ✓ работает' + (t ? ' (прочитал «' + t + '»)' : ' (текст не прочитан)'));
-          } catch (e) { lines.push(ENGINE_NAMES[k] + ': ✗ ' + String((e && e.message) || e).slice(0, 120)); }
-          checkOut.textContent = lines.join('\n');
-          render();
-        }
-        toast('Проверка движков завершена', 1500);
-        bCheck.disabled = false;
-      });
-      bCheck.title = 'Скачать (один раз) и запустить PaddleOCR и Tesseract на тестовой надписи';
-      rowCheck.append(bCheck);
-      checkOut.style.whiteSpace = 'pre-line';
       const rowKey = mk('div', 'tbrub-sw');
       const keyInfo = mk('span', '', '');
       const bKey = btn('Ключ…', () => ImgOcr.askKey());
       rowKey.append(keyInfo, bKey);
+      const perfLine = mk('div', 'tbrub-sub');
+      perfLine.style.whiteSpace = 'pre-line';
       const keyHint = mk('div', 'tbrub-sub', 'Наведите на фото → «🖼 Перевод на фото». Paddle и Tesseract работают без ключей и без отправки фото на сервер; Lens и «Я» открывают фото во внешнем сервисе.');
-      sImg.append(mk('div', 'tbrub-h', 'Текст на фото'), rowEng, engStatus, rowAuto, rowCheck, checkOut, rowKey, keyHint);
-      sTr.append(mk('div', 'tbrub-h', 'Перевод'), rowPage, trStatus, rowSearch, rowImg);
+      const sPerf = mk('div');
+      sPerf.append(mk('div', 'tbrub-h', 'Нагрузка за минуту'), perfLine);
+      sImg.append(mk('div', 'tbrub-h', 'Текст на фото'), rowEng, engStatus, rowAuto, rowThumbs, rowKey, keyHint);
+      sTr.append(mk('div', 'tbrub-h', 'Перевод'), rowPage, trStatus, rowSearch, rowImg, rowRev, rowAlbum);
+      sMode.append(rowWeight, rowSame);
  
-      panel.append(sRate, mk('div', 'tbrub-sep'), sMode, mk('div', 'tbrub-sep'), sTr, mk('div', 'tbrub-sep'), sImg);
+      panel.append(sRate, mk('div', 'tbrub-sep'), sMode, mk('div', 'tbrub-sep'), sTr, mk('div', 'tbrub-sep'), sImg, mk('div', 'tbrub-sep'), sPerf);
       pill.addEventListener('click', (e) => { e.stopPropagation(); panel.hidden = !panel.hidden; renderStatus(); });
       document.addEventListener('click', () => { panel.hidden = true; });
  
       root.append(panel, pill);
       document.body.appendChild(root);
-      els = { dot, pillRate, pillTr, big, src, bAuto, bManual, bCny, bBeside, bReplace, tPage, tSearch, tImg, trStatus, panel, keyInfo,
+      els = { tSame, perfLine, tThumbs, tRev, tAlbum, tWeight, dot, pillRate, pillTr, big, src, bAuto, bManual, bCny, bBeside, bReplace, tPage, tSearch, tImg, trStatus, panel, keyInfo,
         engBtns, tAuto, engStatus };
       render();
     }
@@ -2778,8 +3601,12 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       els.keyInfo.textContent = 'Ключ Google Vision: ' + (state.visionKey ? 'задан ✓' : 'не задан (не обязателен)');
       Object.keys(els.engBtns).forEach((k) => els.engBtns[k].classList.toggle('sel', state.ocrEngine === k));
       els.tAuto.classList.toggle('on', state.imgAuto);
-      const st = (k) => { const v = OcrEngines.status[k]; return v === 'ok' ? 'готов ✓' : v === 'loading' ? 'загрузка…' : v ? '✗ ' + v : 'не загружен'; };
-      els.engStatus.textContent = 'PaddleOCR: ' + st('paddle') + ' · Tesseract: ' + st('tesseract');
+      els.tRev.classList.toggle('on', state.revWhole);
+      els.tThumbs.classList.toggle('on', state.imgThumbs);
+      els.tSame.classList.toggle('on', state.sameTab);
+      els.tAlbum.classList.toggle('on', state.revAlbum);
+      els.tWeight.classList.toggle('on', state.showWeight);
+      els.engStatus.textContent = OcrEngines.describe();
       els.pillTr.classList.toggle('on', state.pageTr);
       els.pillTr.title = state.pageTr ? 'Перевод страницы включён' : 'Перевод страницы выключен';
       renderStatus();
@@ -2789,6 +3616,11 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
       if (!els || els.panel.hidden || statusTimer) return;
       statusTimer = setTimeout(() => {
         statusTimer = 0;
+        const ps = Perf.summary();
+        els.perfLine.textContent = Object.keys(ps).length
+          ? Object.entries(ps).map(([k, v]) => k + ': ' + v.ms + ' мс (' + v.n + ' раз)').join('\n') +
+            (Guard.paused() ? '\n⏸ Taobao показал капчу — автодействия на паузе' : '')
+          : 'пока нет данных';
         const s = Translator.status();
         els.trStatus.textContent = !state.pageTr ? 'Выключен — страница в оригинале'
           : !s.active ? 'Запустится после загрузки страницы'
@@ -2811,10 +3643,27 @@ html body div[data-sg-type="placeholder"] .item{display:block!important;overflow
     });
   }
  
+  /** Ссылки Taobao на товар/главную по умолчанию открываются в новой вкладке — открываем в этой же. */
+  function installSameTab() {
+    const SAME_RE = /^https?:\/\/(?:[\w-]+\.)*(?:taobao|tmall)\.com(?:\/(?:item\.htm|index\.htm)?(?:[?#].*)?)?$/i;
+    document.addEventListener('click', (e) => {
+      if (!state.sameTab || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a || a.target !== '_blank' || a.closest('#tbrub-root,#tbrub-imgbtn')) return;
+      const href = a.href;
+      if (!SAME_RE.test(href) && !/(?:item\.taobao|detail\.tmall|detail\.taobao|item\.tmall)\.com\//i.test(href)) return;
+      e.preventDefault();
+      location.assign(href);
+    }, false);
+  }
+
   function boot() {
+    installSameTab();
     Ui.mount();
     ImgTr.install();
     setTimeout(() => ImgAuto.start(), 1500);
+    // движок распознавания поднимаем сразу (модели из кэша браузера — ~1 с), чтобы автоперевод фото стартовал без ожидания
+    if (state.imgTr && state.imgAuto) setTimeout(() => OcrEngines.warmup(), 1200);
     Prices.fullScan();
     Watch.start();
     syncRates(false);
